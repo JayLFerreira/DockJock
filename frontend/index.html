@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DockJock</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Login Page -->
+        <div id="loginPage" class="page active">
+            <div class="login-container">
+                <h1>DockJock</h1>
+                <p class="tagline">for the office athlete</p>
+                <form id="loginForm">
+                    <input type="password" id="password" placeholder="Enter password" required>
+                    <button type="submit">Login</button>
+                    <p id="loginError" class="error"></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Main App (Hidden until logged in) -->
+        <div id="mainApp" class="page">
+            <nav>
+                <div class="nav-brand">
+                    <h2>DockJock</h2>
+                    <span class="nav-tagline">for the office athlete</span>
+                </div>
+                <div class="nav-links">
+                    <a href="#" data-page="home" class="active">Home</a>
+                    <a href="#" data-page="history">History</a>
+                    <a href="#" data-page="settings">Settings</a>
+                    <a href="#" id="logoutBtn">Logout</a>
+                </div>
+            </nav>
+
+            <main>
+                <!-- Home Page -->
+                <div id="homePage" class="content-page active">
+                    <h1>Today's Tracker</h1>
+                    <p class="date" id="currentDate"></p>
+
+                    <!-- Rings -->
+                    <div class="rings-header">
+                        <span></span>
+                        <div class="customize-wrapper">
+                            <button class="customize-btn" onclick="toggleCustomizePanel()">⚙ Customize</button>
+                            <div id="customizePanel" class="customize-panel" style="display:none">
+                                <div class="customize-panel-header">
+                                    <span>Show / Hide Rings</span>
+                                    <button class="customize-close" onclick="closeCustomizePanel()">✕</button>
+                                </div>
+                                <div id="metricsChecklist"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="progress-rings">
+                        <div class="ring-item" data-metric="calories">
+                            <canvas id="calorieRing" width="150" height="150"></canvas>
+                            <div class="ring-label">
+                                <span class="ring-value" id="calorieValue">0</span>
+                                <span class="ring-goal">/ <span id="calorieGoal">2000</span></span>
+                                <span class="ring-name">Calories</span>
+                            </div>
+                        </div>
+                        <div class="ring-item" data-metric="protein">
+                            <canvas id="proteinRing" width="150" height="150"></canvas>
+                            <div class="ring-label">
+                                <span class="ring-value" id="proteinValue">0</span>
+                                <span class="ring-goal">/ <span id="proteinGoal">150</span>g</span>
+                                <span class="ring-name">Protein</span>
+                            </div>
+                        </div>
+                        <div class="ring-item" data-metric="carbs">
+                            <canvas id="carbsRing" width="150" height="150"></canvas>
+                            <div class="ring-label">
+                                <span class="ring-value" id="carbsValue">0</span>
+                                <span class="ring-goal">/ <span id="carbsGoal">200</span>g</span>
+                                <span class="ring-name">Carbs</span>
+                            </div>
+                        </div>
+                        <div class="ring-item" data-metric="fat">
+                            <canvas id="fatRing" width="150" height="150"></canvas>
+                            <div class="ring-label">
+                                <span class="ring-value" id="fatValue">0</span>
+                                <span class="ring-goal">/ <span id="fatGoal">65</span>g</span>
+                                <span class="ring-name">Fat</span>
+                            </div>
+                        </div>
+                        <div class="ring-item" data-metric="fiber">
+                            <canvas id="fiberRing" width="150" height="150"></canvas>
+                            <div class="ring-label">
+                                <span class="ring-value" id="fiberValue">0</span>
+                                <span class="ring-goal">/ <span id="fiberGoal">30</span>g</span>
+                                <span class="ring-name">Fiber</span>
+                            </div>
+                        </div>
+                        <div class="ring-item" data-metric="water">
+                            <canvas id="waterRing" width="150" height="150"></canvas>
+                            <div class="ring-label">
+                                <span class="ring-value" id="waterValue">0</span>
+                                <span class="ring-goal">/ <span id="waterGoal">8.3</span> cups</span>
+                                <span class="ring-name">Water</span>
+                                <div class="water-controls">
+                                    <button class="water-btn" onclick="addWater(240)">+1 cup</button>
+                                    <button class="water-btn" onclick="addWater(480)">+2 cups</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Two-column: Food Entry + Saved Meals -->
+                    <div class="home-two-col">
+
+                        <!-- Left: Food Entry -->
+                        <div class="food-entry-section">
+                            <h2>Add Food Entry</h2>
+                            <p class="hint">Enter one food item per line. Be specific: "2 eggs" not "eggs", "1 oz butter" not "butter"</p>
+                            <textarea id="foodInput" placeholder="2 eggs&#10;2 slices whole wheat bread&#10;1 oz butter" rows="4"></textarea>
+                            <select id="mealType">
+                                <option value="breakfast">Breakfast</option>
+                                <option value="lunch">Lunch</option>
+                                <option value="dinner">Dinner</option>
+                                <option value="snack">Snack</option>
+                                <option value="workout">Workout Shake</option>
+                            </select>
+                            <div class="save-later-row">
+                                <label class="save-later-label">
+                                    <input type="checkbox" id="saveLaterCheckbox" onchange="toggleSaveLaterName()">
+                                    Save as meal for later
+                                </label>
+                                <input type="text" id="saveLaterName" class="save-later-name" placeholder="Meal name..." style="display:none">
+                            </div>
+                            <div class="button-row">
+                                <button id="addFoodBtn" class="primary-btn">Add Entry</button>
+                                <button id="addManualBtn" class="secondary-btn">Manual Entry</button>
+                            </div>
+                            <div id="addFoodStatus" class="status-message"></div>
+                        </div>
+
+                        <!-- Right: Saved Meals -->
+                        <div class="saved-meals-panel">
+                            <h2>Saved Meals</h2>
+                            <p class="hint">Click a meal to load it for today.</p>
+                            <div id="savedMealsList" class="saved-meals-list"></div>
+                        </div>
+
+                    </div>
+
+                    <!-- Today's Entries Table -->
+                    <div class="entries-section">
+                        <div class="section-header">
+                            <h2>Today's Entries</h2>
+                            <button id="saveMealBtn" class="secondary-btn" style="display:none;">Save as Meal</button>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="entries-table">
+                                <thead>
+                                    <tr>
+                                        <th class="cb-col"><input type="checkbox" id="selectAllEntries" title="Select all" onchange="toggleAllEntries(this)"></th>
+                                        <th>Meal</th>
+                                        <th>Food</th>
+                                        <th>Qty</th>
+                                        <th>Unit</th>
+                                        <th>Cal</th>
+                                        <th>Protein</th>
+                                        <th>Carbs</th>
+                                        <th>Fat</th>
+                                        <th>Fiber</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="entriesList"></tbody>
+                            </table>
+                            <p id="entriesEmpty" style="display:none; color:#999; text-align:center; padding:20px;">No entries yet today. Add your first meal!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Entry Modal -->
+                <div id="editModal" class="modal-overlay" style="display:none" onclick="closeEditModalOutside(event)">
+                    <div class="modal-box">
+                        <div class="modal-header">
+                            <h3>Edit Entry</h3>
+                            <button class="modal-close" onclick="closeEditModal()">✕</button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" id="editEntryId">
+                            <div class="edit-grid">
+                                <div class="edit-field edit-field-wide">
+                                    <label>Food Name</label>
+                                    <input type="text" id="editFoodName">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Quantity</label>
+                                    <input type="number" id="editQuantity" step="0.5" min="0" oninput="handleEditQtyChange()" onchange="handleEditQtyChange()">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Unit</label>
+                                    <input type="text" id="editUnit">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Calories</label>
+                                    <input type="number" id="editCalories" step="1" min="0">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Protein (g)</label>
+                                    <input type="number" id="editProtein" step="0.1" min="0">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Carbs (g)</label>
+                                    <input type="number" id="editCarbs" step="0.1" min="0">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Fat (g)</label>
+                                    <input type="number" id="editFat" step="0.1" min="0">
+                                </div>
+                                <div class="edit-field">
+                                    <label>Fiber (g)</label>
+                                    <input type="number" id="editFiber" step="0.1" min="0">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="primary-btn" onclick="saveEditEntry()">Save Changes</button>
+                            <button class="secondary-btn modal-cancel-btn" onclick="closeEditModal()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Save Meal Modal -->
+                <div id="saveMealModal" class="modal-overlay" style="display:none" onclick="closeSaveMealModalOutside(event)">
+                    <div class="modal-box" style="max-width:400px">
+                        <div class="modal-header">
+                            <h3>Save as Meal</h3>
+                            <button class="modal-close" onclick="closeSaveMealModal()">✕</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="edit-field">
+                                <label>Meal Name</label>
+                                <input type="text" id="saveMealNameInput" placeholder="e.g. My Breakfast" style="margin-top:6px">
+                            </div>
+                            <p id="saveMealSubtext" style="margin-top:10px; font-size:13px; color:#999;"></p>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="primary-btn" onclick="confirmSaveMeal()">Save Meal</button>
+                            <button class="secondary-btn modal-cancel-btn" onclick="closeSaveMealModal()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Load Saved Meal Confirm Modal -->
+                <div id="loadMealModal" class="modal-overlay" style="display:none" onclick="closeLoadMealModalOutside(event)">
+                    <div class="modal-box" style="max-width:380px">
+                        <div class="modal-header">
+                            <h3>Load Saved Meal</h3>
+                            <button class="modal-close" onclick="closeLoadMealModal()">✕</button>
+                        </div>
+                        <div class="modal-body">
+                            <p id="loadMealConfirmText" style="color:#444; font-size:15px;"></p>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="primary-btn" onclick="confirmLoadMeal()">Load Meal</button>
+                            <button class="secondary-btn modal-cancel-btn" onclick="closeLoadMealModal()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Page -->
+                <div id="historyPage" class="content-page">
+                    <h1>History</h1>
+                    <p>Coming in Phase 5!</p>
+                </div>
+
+                <!-- Settings Page -->
+                <div id="settingsPage" class="content-page">
+                    <h1>Settings</h1>
+                    <p>Coming in Phase 5!</p>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

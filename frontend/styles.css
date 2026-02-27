@@ -1,0 +1,740 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+/* Login Page */
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+    background: white;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.login-container h1 {
+    text-align: center;
+    color: #667eea;
+    margin-bottom: 6px;
+    font-size: 2em;
+}
+
+.tagline {
+    text-align: center;
+    color: #999;
+    font-size: 0.85em;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    margin-bottom: 28px;
+}
+
+.nav-brand {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.nav-tagline {
+    font-size: 0.72em;
+    color: #aaa;
+    letter-spacing: 0.05em;
+    text-transform: lowercase;
+}
+
+.login-container input {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 16px;
+    margin-bottom: 20px;
+    transition: border-color 0.3s;
+}
+
+.login-container input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.login-container button {
+    width: 100%;
+    padding: 15px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.login-container button:hover {
+    background: #5568d3;
+}
+
+.error {
+    color: #e74c3c;
+    text-align: center;
+    margin-top: 10px;
+}
+
+/* Main App */
+#mainApp {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    min-height: 100vh;
+}
+
+nav {
+    background: white;
+    padding: 20px 40px;
+    border-bottom: 2px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+nav h2 {
+    color: #667eea;
+}
+
+.nav-links {
+    display: flex;
+    gap: 30px;
+}
+
+.nav-links a {
+    text-decoration: none;
+    color: #666;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: all 0.3s;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+    background: #667eea;
+    color: white;
+}
+
+main {
+    padding: 40px;
+}
+
+.content-page {
+    display: none;
+}
+
+.content-page.active {
+    display: block;
+}
+
+.date {
+    color: #999;
+    margin-bottom: 30px;
+}
+
+/* Progress Rings */
+.progress-rings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 30px;
+    margin-bottom: 50px;
+}
+
+.ring-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.ring-label {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+}
+
+.ring-value {
+    font-size: 2em;
+    font-weight: bold;
+    color: #333;
+}
+
+.ring-goal {
+    color: #999;
+    font-size: 0.9em;
+}
+
+.ring-name {
+    color: #667eea;
+    font-weight: 600;
+    margin-top: 5px;
+}
+
+/* Food Entry Section (base — layout handled by .home-two-col) */
+.food-entry-section {
+}
+
+.food-entry-section h2 {
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.hint {
+    color: #999;
+    font-size: 0.9em;
+    margin-bottom: 15px;
+}
+
+.food-entry-section textarea {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 16px;
+    font-family: inherit;
+    margin-bottom: 15px;
+    resize: vertical;
+}
+
+.food-entry-section select {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 16px;
+    margin-bottom: 15px;
+    cursor: pointer;
+}
+
+.food-entry-section button {
+    width: 100%;
+    padding: 15px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.food-entry-section button:hover {
+    background: #5568d3;
+}
+
+.food-entry-section button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.button-row {
+    display: flex;
+    gap: 10px;
+}
+
+.primary-btn {
+    flex: 2;
+    padding: 15px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.primary-btn:hover {
+    background: #5568d3;
+}
+
+.secondary-btn {
+    flex: 1;
+    padding: 15px;
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.secondary-btn:hover {
+    background: #667eea;
+    color: white;
+}
+
+.status-message {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    display: none;
+}
+
+.status-message.success {
+    background: #d4edda;
+    color: #155724;
+    display: block;
+}
+
+.status-message.error {
+    background: #f8d7da;
+    color: #721c24;
+    display: block;
+}
+
+.status-message.loading {
+    background: #fff3cd;
+    color: #856404;
+    display: block;
+}
+
+.water-controls {
+    display: flex;
+    gap: 5px;
+    margin-top: 10px;
+}
+
+.water-btn {
+    padding: 5px 10px;
+    background: #4facfe;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.water-btn:hover {
+    background: #3a8cd9;
+}
+
+/* Two-column layout: food entry + saved meals */
+.home-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-bottom: 40px;
+    align-items: start;
+}
+
+.food-entry-section {
+    background: #f8f9fa;
+    padding: 30px;
+    border-radius: 15px;
+}
+
+.saved-meals-panel {
+    background: #f8f9fa;
+    padding: 24px;
+    border-radius: 15px;
+    max-height: 480px;
+    overflow-y: auto;
+}
+
+.saved-meals-panel h2 {
+    margin-bottom: 6px;
+    color: #333;
+}
+
+/* Save-later checkbox row */
+.save-later-row {
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.save-later-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #444;
+    cursor: pointer;
+}
+
+.save-later-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #667eea;
+    cursor: pointer;
+}
+
+.save-later-name {
+    padding: 8px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    width: 100%;
+    transition: border-color 0.2s;
+}
+
+.save-later-name:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Entries section */
+.entries-section {
+    margin-top: 10px;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+/* Entries table */
+.cb-col {
+    width: 36px;
+    text-align: center;
+}
+
+.entry-checkbox,
+#selectAllEntries {
+    width: 15px;
+    height: 15px;
+    accent-color: #667eea;
+    cursor: pointer;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid #e0e0e0;
+}
+
+.entries-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.entries-table thead th {
+    background: #f8f9fa;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: #555;
+    border-bottom: 2px solid #e0e0e0;
+    white-space: nowrap;
+}
+
+.entries-table tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f0f0;
+    color: #333;
+    vertical-align: middle;
+}
+
+.entries-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.entries-table tbody tr:hover td {
+    background: #fafafa;
+}
+
+.entry-meal-badge {
+    display: inline-block;
+    background: #667eea;
+    color: white;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.saved-meal-badge {
+    background: #43e97b;
+    color: #1a5c35;
+}
+
+.food-name-cell {
+    font-weight: 500;
+    max-width: 180px;
+}
+
+.actions-cell {
+    white-space: nowrap;
+}
+
+.edit-btn {
+    padding: 5px 10px;
+    background: #f0f0f0;
+    color: #333;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 5px;
+    transition: all 0.2s;
+}
+
+.edit-btn:hover {
+    background: #667eea;
+    color: white;
+}
+
+.delete-btn {
+    padding: 5px 10px;
+    background: #ff4444;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.delete-btn:hover {
+    background: #cc0000;
+}
+
+/* Saved meals */
+.saved-meals-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.saved-meal-card {
+    background: white;
+    border: 2px solid #667eea;
+    border-radius: 10px;
+    padding: 12px 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.saved-meal-card:hover {
+    background: #f0f2ff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102,126,234,0.15);
+}
+
+.saved-meal-name {
+    font-weight: 600;
+    color: #667eea;
+    margin-bottom: 4px;
+}
+
+.saved-meal-info {
+    color: #999;
+    font-size: 13px;
+}
+
+/* Edit Entry Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-box {
+    background: white;
+    border-radius: 16px;
+    padding: 30px;
+    width: 90%;
+    max-width: 520px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-header h3 {
+    color: #333;
+    font-size: 1.2em;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #999;
+    line-height: 1;
+    padding: 0;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.edit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.edit-field-wide {
+    grid-column: 1 / -1;
+}
+
+.edit-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.edit-field input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+
+.edit-field input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.modal-cancel-btn {
+    flex: 1 !important;
+}
+
+/* Rings header with customize button */
+.rings-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 10px;
+    position: relative;
+}
+
+.customize-wrapper {
+    position: relative;
+}
+
+.customize-btn {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.customize-btn:hover {
+    background: #667eea;
+    color: white;
+}
+
+/* Customize dropdown panel */
+.customize-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 16px;
+    min-width: 180px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+}
+
+.customize-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.customize-close {
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: #999;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.customize-close:hover {
+    color: #333;
+}
+
+.metric-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    cursor: pointer;
+    font-size: 14px;
+    color: #444;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.metric-checkbox-item:last-child {
+    border-bottom: none;
+}
+
+.metric-checkbox-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #667eea;
+    cursor: pointer;
+}

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:claude.ai)",
+      "Bash(powershell.exe -Command \"echo $PROFILE\")",
+      "Bash(powershell.exe -Command \"Get-Content ''C:\\\\Users\\\\ferre\\\\OneDrive\\\\Documents\\\\WindowsPowerShell\\\\Microsoft.PowerShell_profile.ps1''\")",
+      "Bash(powershell.exe -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Users\\\\ferre\\\\OneDrive\\\\Documents\\\\WindowsPowerShell''\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\ferre\\OneDrive\\Documents\\WindowsPowerShell"
+    ]
+  }
+}

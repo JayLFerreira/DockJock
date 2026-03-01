@@ -738,3 +738,513 @@ main {
     accent-color: #667eea;
     cursor: pointer;
 }
+
+/* ── Settings Page ──────────────────────────────────────────────────────────── */
+
+.settings-container {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.settings-card {
+    background: white;
+    border-radius: 16px;
+    padding: 28px 32px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+
+.settings-card h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.settings-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.settings-card-header h2 { margin-bottom: 0; }
+
+.wizard-launch-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.wizard-launch-btn:hover { opacity: 0.88; }
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 24px;
+    margin-bottom: 20px;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.settings-field-wide { grid-column: 1 / -1; }
+
+.settings-field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.settings-field input,
+.settings-select {
+    padding: 10px 12px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    transition: border-color 0.2s;
+    background: white;
+}
+
+.settings-field input:focus,
+.settings-select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.height-inputs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.height-inputs input {
+    width: 70px;
+    padding: 10px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    text-align: center;
+}
+
+.height-inputs input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.height-sep {
+    font-size: 13px;
+    color: #888;
+    font-weight: 600;
+}
+
+.settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.settings-status {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* ── Macro Wizard ────────────────────────────────────────────────────────────── */
+
+.wizard-box { max-width: 520px; width: 100%; }
+
+.wizard-subtitle {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+
+.wizard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.toggle-group { display: flex; gap: 8px; }
+
+.toggle-btn {
+    flex: 1;
+    padding: 9px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #555;
+}
+
+.toggle-btn.active {
+    border-color: #667eea;
+    background: #667eea;
+    color: white;
+}
+
+.goal-cards { display: flex; gap: 12px; }
+
+.goal-card {
+    flex: 1;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 18px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.goal-card:hover { border-color: #667eea; }
+
+.goal-card.selected {
+    border-color: #667eea;
+    background: #f0f2ff;
+}
+
+.goal-icon { font-size: 24px; margin-bottom: 8px; }
+
+.goal-label {
+    font-weight: 700;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.goal-desc {
+    font-size: 11px;
+    color: #888;
+    line-height: 1.4;
+}
+
+.activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.activity-item:hover { border-color: #667eea; }
+
+.activity-item.selected {
+    border-color: #667eea;
+    background: #f0f2ff;
+}
+
+.activity-label {
+    font-weight: 700;
+    font-size: 14px;
+    color: #333;
+}
+
+.activity-desc { font-size: 12px; color: #888; }
+
+.wizard-results {
+    display: flex;
+    flex-direction: column;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.wizard-result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 15px;
+}
+
+.wizard-result-row:last-child { border-bottom: none; }
+.wizard-result-row span { color: #555; }
+.wizard-result-row strong { color: #667eea; font-size: 16px; }
+
+.wizard-footer { justify-content: space-between; }
+
+/* ── Home Top Row (Profile + Rings) ─────────────────────────────────────────── */
+
+.home-top-row {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 28px;
+}
+
+.rings-col { min-width: 0; }
+
+/* ── Profile Card ────────────────────────────────────────────────────────────── */
+
+.profile-card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+}
+
+.profile-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-size: 26px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profile-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #333;
+    line-height: 1.2;
+}
+
+.profile-stats {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    justify-content: center;
+}
+
+.profile-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.profile-stat-label {
+    font-size: 10px;
+    color: #aaa;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.profile-stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #444;
+}
+
+.profile-goal-badge {
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 20px;
+}
+
+.profile-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+}
+
+.profile-wizard-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    width: 100%;
+}
+
+.profile-wizard-btn:hover { opacity: 0.88; }
+
+.profile-edit-btn {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    padding: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.profile-edit-btn:hover {
+    background: #667eea;
+    color: white;
+}
+
+/* ── Saved Meals Panel Updates ───────────────────────────────────────────────── */
+
+.saved-meals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.saved-meals-header h2 { margin-bottom: 0; }
+
+.create-meal-btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.create-meal-btn:hover { opacity: 0.85; }
+
+.saved-meal-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.saved-meal-main {
+    flex: 1;
+    cursor: pointer;
+}
+
+.saved-meal-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+/* ── Meal Builder Modal ───────────────────────────────────────────────────────── */
+
+.meal-builder-box {
+    max-width: 760px;
+    width: 100%;
+}
+
+.mb-top-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.mb-items-wrapper {
+    overflow-x: auto;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 10px;
+    margin-bottom: 12px;
+}
+
+.mb-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.mb-table thead th {
+    padding: 9px 8px;
+    background: #f8f8f8;
+    font-size: 11px;
+    font-weight: 700;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    border-bottom: 1.5px solid #e0e0e0;
+}
+
+.mb-table tbody td {
+    padding: 5px 4px;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.mb-table tbody tr:last-child td { border-bottom: none; }
+
+.mb-input {
+    padding: 6px 8px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
+    width: 100%;
+    min-width: 0;
+}
+
+.mb-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.mb-food { min-width: 130px; }
+.mb-qty  { width: 56px; }
+.mb-unit { width: 70px; }
+.mb-num  { width: 58px; text-align: right; }
+
+.mb-remove-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.mb-totals-row td {
+    padding: 8px 8px;
+    border-top: 2px solid #e0e0e0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    background: #fafafa;
+}
+
+.add-item-btn {
+    background: none;
+    border: 2px dashed #c0c0c0;
+    border-radius: 8px;
+    color: #888;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 16px;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.2s;
+}
+
+.add-item-btn:hover {
+    border-color: #667eea;
+    color: #667eea;
+}

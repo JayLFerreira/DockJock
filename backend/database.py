@@ -24,6 +24,8 @@ class User(Base):
     fiber_goal = Column(Float, default=30)
     water_goal = Column(Float, default=2000)  # in ml
     openai_model = Column(String, default="gpt-4o-mini")
+    name = Column(String, nullable=True)
+    goal = Column(String, nullable=True)  # 'lose', 'maintain', 'gain'
 
 class FoodEntry(Base):
     __tablename__ = "food_entries"
@@ -104,6 +106,17 @@ def init_db():
                 "ALTER TABLE food_entries ADD COLUMN source_meal VARCHAR"
             ))
             conn.commit()
+
+    with engine.connect() as conn:
+        existing_users = [row[1] for row in conn.execute(
+            __import__('sqlalchemy').text("PRAGMA table_info(users)")
+        )]
+        for col, typedef in [("name", "VARCHAR"), ("goal", "VARCHAR")]:
+            if col not in existing_users:
+                conn.execute(__import__('sqlalchemy').text(
+                    f"ALTER TABLE users ADD COLUMN {col} {typedef}"
+                ))
+        conn.commit()
 
     # Create default user if doesn't exist
     db = SessionLocal()

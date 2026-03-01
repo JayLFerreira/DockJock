@@ -47,6 +47,8 @@ class UserSettings(BaseModel):
     fiber_goal: Optional[float] = None
     water_goal: Optional[float] = None
     openai_model: Optional[str] = None
+    name: Optional[str] = None
+    goal: Optional[str] = None
 
 class AddFoodRequest(BaseModel):
     food_text: str
@@ -70,6 +72,21 @@ class SaveMealRequest(BaseModel):
     name: str
     meal_type: str
     entry_ids: list[int]
+
+class MealBuilderItem(BaseModel):
+    food_item: str
+    quantity: float
+    unit: Optional[str] = ''
+    calories: float
+    protein: float
+    carbs: float
+    fat: float
+    fiber: float
+
+class CreateMealManualRequest(BaseModel):
+    name: str
+    meal_type: str
+    items: list[MealBuilderItem]
 
 class AddWaterRequest(BaseModel):
     amount: float  # in ml
@@ -100,6 +117,8 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 @app.get("/api/user/settings")
 async def get_settings(user: User = Depends(verify_password)):
     return {
+        "name": user.name,
+        "goal": user.goal,
         "height": user.height,
         "weight": user.weight,
         "calorie_goal": user.calorie_goal,
@@ -135,7 +154,11 @@ async def update_settings(
         user.water_goal = settings.water_goal
     if settings.openai_model is not None:
         user.openai_model = settings.openai_model
-    
+    if settings.name is not None:
+        user.name = settings.name
+    if settings.goal is not None:
+        user.goal = settings.goal
+
     db.commit()
     return {"success": True, "message": "Settings updated"}
 
@@ -486,10 +509,76 @@ async def list_saved_meals(
                 "protein": m.total_protein,
                 "carbs": m.total_carbs,
                 "fat": m.total_fat,
-                "fiber": m.total_fiber
+                "fiber": m.total_fiber,
+                "items": json.loads(m.items_json) if m.items_json else []
             } for m in meals
         ]
     }
+
+def _build_meal_items_json(items):
+    return json.dumps([{
+        "food_item": i.food_item, "quantity": i.quantity, "unit": i.unit or '',
+        "calories": i.calories, "protein": i.protein, "carbs": i.carbs,
+        "fat": i.fat, "fiber": i.fiber, "sugar": 0, "saturated_fat": 0, "micros_json": "{}"
+    } for i in items])
+
+@app.post("/api/meals/create")
+async def create_meal_manual(
+    request: CreateMealManualRequest,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    """Create a saved meal from manually entered items"""
+    saved_meal = SavedMeal(
+        user_id=user.id,
+        name=request.name,
+        meal_type=request.meal_type,
+        items_json=_build_meal_items_json(request.items),
+        total_calories=sum(i.calories for i in request.items),
+        total_protein=sum(i.protein  for i in request.items),
+        total_carbs=sum(i.carbs    for i in request.items),
+        total_fat=sum(i.fat      for i in request.items),
+        total_fiber=sum(i.fiber    for i in request.items),
+    )
+    db.add(saved_meal)
+    db.commit()
+    return {"success": True, "id": saved_meal.id}
+
+@app.put("/api/meals/{meal_id}")
+async def update_saved_meal(
+    meal_id: int,
+    request: CreateMealManualRequest,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    """Update an existing saved meal"""
+    meal = db.query(SavedMeal).filter(SavedMeal.id == meal_id, SavedMeal.user_id == user.id).first()
+    if not meal:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    meal.name          = request.name
+    meal.meal_type     = request.meal_type
+    meal.items_json    = _build_meal_items_json(request.items)
+    meal.total_calories = sum(i.calories for i in request.items)
+    meal.total_protein  = sum(i.protein  for i in request.items)
+    meal.total_carbs    = sum(i.carbs    for i in request.items)
+    meal.total_fat      = sum(i.fat      for i in request.items)
+    meal.total_fiber    = sum(i.fiber    for i in request.items)
+    db.commit()
+    return {"success": True}
+
+@app.delete("/api/meals/{meal_id}")
+async def delete_saved_meal(
+    meal_id: int,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    """Delete a saved meal"""
+    meal = db.query(SavedMeal).filter(SavedMeal.id == meal_id, SavedMeal.user_id == user.id).first()
+    if not meal:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    db.delete(meal)
+    db.commit()
+    return {"success": True}
 
 @app.post("/api/meals/load/{meal_id}")
 async def load_saved_meal(

@@ -42,7 +42,32 @@
                     <h1>Today's Tracker</h1>
                     <p class="date" id="currentDate"></p>
 
+                    <!-- Profile + Rings row -->
+                    <div class="home-top-row">
+
+                    <!-- Profile Card -->
+                    <div class="profile-card">
+                        <div class="profile-avatar" id="profileAvatar">?</div>
+                        <div class="profile-name" id="profileName">Set up your profile</div>
+                        <div class="profile-stats">
+                            <div class="profile-stat">
+                                <span class="profile-stat-label">Height</span>
+                                <span class="profile-stat-value" id="profileHeight">—</span>
+                            </div>
+                            <div class="profile-stat">
+                                <span class="profile-stat-label">Weight</span>
+                                <span class="profile-stat-value" id="profileWeight">—</span>
+                            </div>
+                        </div>
+                        <div id="profileGoalBadge" class="profile-goal-badge" style="display:none"></div>
+                        <div class="profile-actions">
+                            <button class="profile-wizard-btn" onclick="openMacroWizard()">✦ Macro Wizard</button>
+                            <button class="profile-edit-btn" onclick="goToSettings()">Edit</button>
+                        </div>
+                    </div>
+
                     <!-- Rings -->
+                    <div class="rings-col">
                     <div class="rings-header">
                         <span></span>
                         <div class="customize-wrapper">
@@ -110,6 +135,8 @@
                             </div>
                         </div>
                     </div>
+                    </div> <!-- /rings-col -->
+                    </div> <!-- /home-top-row -->
 
                     <!-- Two-column: Food Entry + Saved Meals -->
                     <div class="home-two-col">
@@ -142,8 +169,11 @@
 
                         <!-- Right: Saved Meals -->
                         <div class="saved-meals-panel">
-                            <h2>Saved Meals</h2>
-                            <p class="hint">Click a meal to load it for today.</p>
+                            <div class="saved-meals-header">
+                                <h2>Saved Meals</h2>
+                                <button class="create-meal-btn" onclick="openMealBuilder()">+ Create</button>
+                            </div>
+                            <p class="hint">Click a meal to load it. Use Edit to modify or create meals manually.</p>
                             <div id="savedMealsList" class="saved-meals-list"></div>
                         </div>
 
@@ -276,10 +306,314 @@
 
                 <!-- Settings Page -->
                 <div id="settingsPage" class="content-page">
-                    <h1>Settings</h1>
-                    <p>Coming in Phase 5!</p>
+                    <div class="settings-container">
+
+                        <!-- Profile -->
+                        <div class="settings-card">
+                            <h2>Profile</h2>
+                            <div class="settings-grid">
+                                <div class="settings-field settings-field-wide">
+                                    <label>Your Name</label>
+                                    <input type="text" id="setName" placeholder="e.g. Jay">
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button class="primary-btn" onclick="saveProfile()">Save</button>
+                                <span id="profileStatus" class="settings-status"></span>
+                            </div>
+                        </div>
+
+                        <!-- Macro Goals -->
+                        <div class="settings-card">
+                            <div class="settings-card-header">
+                                <h2>Daily Macro Goals</h2>
+                                <button class="wizard-launch-btn" onclick="openMacroWizard()">✦ Macro Wizard</button>
+                            </div>
+                            <div class="settings-grid">
+                                <div class="settings-field">
+                                    <label>Calories (kcal)</label>
+                                    <input type="number" id="setCalorieGoal" min="0">
+                                </div>
+                                <div class="settings-field">
+                                    <label>Protein (g)</label>
+                                    <input type="number" id="setProteinGoal" min="0">
+                                </div>
+                                <div class="settings-field">
+                                    <label>Carbs (g)</label>
+                                    <input type="number" id="setCarbsGoal" min="0">
+                                </div>
+                                <div class="settings-field">
+                                    <label>Fat (g)</label>
+                                    <input type="number" id="setFatGoal" min="0">
+                                </div>
+                                <div class="settings-field">
+                                    <label>Fiber (g)</label>
+                                    <input type="number" id="setFiberGoal" min="0">
+                                </div>
+                                <div class="settings-field">
+                                    <label>Water (cups)</label>
+                                    <input type="number" id="setWaterGoal" min="0" step="0.5">
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button class="primary-btn" onclick="saveMacroGoals()">Save Goals</button>
+                                <span id="macroGoalStatus" class="settings-status"></span>
+                            </div>
+                        </div>
+
+                        <!-- Body Stats -->
+                        <div class="settings-card">
+                            <h2>Body Stats</h2>
+                            <div class="settings-grid">
+                                <div class="settings-field">
+                                    <label>Height</label>
+                                    <div class="height-inputs">
+                                        <input type="number" id="setHeightFt" min="0" max="8" placeholder="ft">
+                                        <span class="height-sep">ft</span>
+                                        <input type="number" id="setHeightIn" min="0" max="11" placeholder="in">
+                                        <span class="height-sep">in</span>
+                                    </div>
+                                </div>
+                                <div class="settings-field">
+                                    <label>Weight (lbs)</label>
+                                    <input type="number" id="setWeight" min="0" step="0.5">
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button class="primary-btn" onclick="saveBodyStats()">Save Stats</button>
+                                <span id="bodyStatStatus" class="settings-status"></span>
+                            </div>
+                        </div>
+
+                        <!-- Account -->
+                        <div class="settings-card">
+                            <h2>Change Password</h2>
+                            <div class="settings-grid">
+                                <div class="settings-field settings-field-wide">
+                                    <label>Current Password</label>
+                                    <input type="password" id="currentPassword" placeholder="Enter current password">
+                                </div>
+                                <div class="settings-field">
+                                    <label>New Password</label>
+                                    <input type="password" id="newPassword" placeholder="New password">
+                                </div>
+                                <div class="settings-field">
+                                    <label>Confirm New Password</label>
+                                    <input type="password" id="confirmPassword" placeholder="Confirm new password">
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button class="primary-btn" onclick="changePassword()">Change Password</button>
+                                <span id="passwordStatus" class="settings-status"></span>
+                            </div>
+                        </div>
+
+                        <!-- AI Model -->
+                        <div class="settings-card">
+                            <h2>AI Model</h2>
+                            <div class="settings-grid">
+                                <div class="settings-field">
+                                    <label>OpenAI Model</label>
+                                    <select id="setOpenAIModel" class="settings-select">
+                                        <option value="gpt-4o-mini">gpt-4o-mini (fast, cheap)</option>
+                                        <option value="gpt-4o">gpt-4o (smarter, slower)</option>
+                                        <option value="gpt-4-turbo">gpt-4-turbo</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="settings-actions">
+                                <button class="primary-btn" onclick="saveAIModel()">Save</button>
+                                <span id="aiModelStatus" class="settings-status"></span>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- Meal Builder Modal (create / edit saved meals manually) -->
+    <div id="mealBuilderModal" class="modal-overlay" style="display:none" onclick="closeMealBuilderOutside(event)">
+        <div class="modal-box meal-builder-box">
+            <div class="modal-header">
+                <h3 id="mealBuilderTitle">Create Saved Meal</h3>
+                <button class="modal-close" onclick="closeMealBuilder()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-top-row">
+                    <div class="settings-field" style="flex:2">
+                        <label>Meal Name</label>
+                        <input type="text" id="mbMealName" placeholder="e.g. Pre-Workout Shake">
+                    </div>
+                    <div class="settings-field" style="flex:1">
+                        <label>Meal Type</label>
+                        <select id="mbMealType" class="settings-select">
+                            <option value="breakfast">Breakfast</option>
+                            <option value="lunch">Lunch</option>
+                            <option value="dinner">Dinner</option>
+                            <option value="snack">Snack</option>
+                            <option value="workout">Workout Shake</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-items-wrapper">
+                    <table class="mb-table">
+                        <thead>
+                            <tr>
+                                <th>Food</th>
+                                <th>Qty</th>
+                                <th>Unit</th>
+                                <th>Cal</th>
+                                <th>Protein</th>
+                                <th>Carbs</th>
+                                <th>Fat</th>
+                                <th>Fiber</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="mbItemsBody"></tbody>
+                        <tfoot>
+                            <tr class="mb-totals-row" id="mbTotalsRow">
+                                <td><strong>Total</strong></td>
+                                <td></td><td></td>
+                                <td id="mbTotalCal">0</td>
+                                <td id="mbTotalProtein">0g</td>
+                                <td id="mbTotalCarbs">0g</td>
+                                <td id="mbTotalFat">0g</td>
+                                <td id="mbTotalFiber">0g</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <button class="add-item-btn" onclick="addMealBuilderRow()">+ Add Item</button>
+            </div>
+            <div class="modal-footer">
+                <button class="primary-btn" onclick="saveMealBuilder()">Save Meal</button>
+                <button class="secondary-btn modal-cancel-btn" onclick="closeMealBuilder()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Macro Wizard Modal -->
+    <div id="macroWizard" class="modal-overlay" style="display:none" onclick="closeMacroWizardOutside(event)">
+        <div class="modal-box wizard-box">
+            <div class="modal-header">
+                <h3 id="wizardTitle">Macro Wizard — Step 1 of 3</h3>
+                <button class="modal-close" onclick="closeMacroWizard()">✕</button>
+            </div>
+
+            <!-- Step 1: About You -->
+            <div id="wizardStep1" class="wizard-step">
+                <p class="wizard-subtitle">Tell us about yourself</p>
+                <div class="wizard-grid">
+                    <div class="settings-field">
+                        <label>Sex</label>
+                        <div class="toggle-group">
+                            <button class="toggle-btn active" id="sexMale" onclick="selectSex('male')">Male</button>
+                            <button class="toggle-btn" id="sexFemale" onclick="selectSex('female')">Female</button>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label>Age</label>
+                        <input type="number" id="wizardAge" min="10" max="99" placeholder="e.g. 32">
+                    </div>
+                    <div class="settings-field">
+                        <label>Height</label>
+                        <div class="height-inputs">
+                            <input type="number" id="wizardFt" min="0" max="8" placeholder="ft">
+                            <span class="height-sep">ft</span>
+                            <input type="number" id="wizardIn" min="0" max="11" placeholder="in">
+                            <span class="height-sep">in</span>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label>Weight (lbs)</label>
+                        <input type="number" id="wizardWeight" min="0" step="0.5" placeholder="e.g. 185">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Goal -->
+            <div id="wizardStep2" class="wizard-step" style="display:none">
+                <p class="wizard-subtitle">What is your primary goal?</p>
+                <div class="goal-cards">
+                    <div class="goal-card" id="goalLose" onclick="selectGoal('lose')">
+                        <div class="goal-icon">📉</div>
+                        <div class="goal-label">Lose Weight</div>
+                        <div class="goal-desc">Caloric deficit, higher protein to preserve muscle</div>
+                    </div>
+                    <div class="goal-card" id="goalMaintain" onclick="selectGoal('maintain')">
+                        <div class="goal-icon">⚖️</div>
+                        <div class="goal-label">Maintain</div>
+                        <div class="goal-desc">Eat at maintenance, balanced macros</div>
+                    </div>
+                    <div class="goal-card" id="goalGain" onclick="selectGoal('gain')">
+                        <div class="goal-icon">📈</div>
+                        <div class="goal-label">Gain Muscle</div>
+                        <div class="goal-desc">Caloric surplus, high carbs to fuel training</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Activity -->
+            <div id="wizardStep3" class="wizard-step" style="display:none">
+                <p class="wizard-subtitle">How active are you?</p>
+                <div class="activity-list">
+                    <div class="activity-item" id="actSedentary" onclick="selectActivity('sedentary', 1.2)">
+                        <div class="activity-label">Sedentary</div>
+                        <div class="activity-desc">Desk job, little or no exercise</div>
+                    </div>
+                    <div class="activity-item" id="actLight" onclick="selectActivity('light', 1.375)">
+                        <div class="activity-label">Lightly Active</div>
+                        <div class="activity-desc">Light exercise 1–3 days/week</div>
+                    </div>
+                    <div class="activity-item" id="actModerate" onclick="selectActivity('moderate', 1.55)">
+                        <div class="activity-label">Moderately Active</div>
+                        <div class="activity-desc">Moderate exercise 3–5 days/week</div>
+                    </div>
+                    <div class="activity-item" id="actVery" onclick="selectActivity('very', 1.725)">
+                        <div class="activity-label">Very Active</div>
+                        <div class="activity-desc">Hard exercise 6–7 days/week</div>
+                    </div>
+                    <div class="activity-item" id="actExtreme" onclick="selectActivity('extreme', 1.9)">
+                        <div class="activity-label">Extremely Active</div>
+                        <div class="activity-desc">Twice daily training or physical job</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: Results -->
+            <div id="wizardStep4" class="wizard-step" style="display:none">
+                <p class="wizard-subtitle">Your recommended daily targets</p>
+                <div class="wizard-results">
+                    <div class="wizard-result-row">
+                        <span>Daily Calories</span><strong id="wCalories">—</strong>
+                    </div>
+                    <div class="wizard-result-row">
+                        <span>Protein</span><strong id="wProtein">—</strong>
+                    </div>
+                    <div class="wizard-result-row">
+                        <span>Carbs</span><strong id="wCarbs">—</strong>
+                    </div>
+                    <div class="wizard-result-row">
+                        <span>Fat</span><strong id="wFat">—</strong>
+                    </div>
+                    <div class="wizard-result-row">
+                        <span>Fiber</span><strong id="wFiber">—</strong>
+                    </div>
+                    <div class="wizard-result-row">
+                        <span>Water</span><strong id="wWater">—</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer wizard-footer">
+                <button class="secondary-btn modal-cancel-btn" id="wizardBackBtn" onclick="wizardBack()" style="display:none">← Back</button>
+                <button class="primary-btn" id="wizardNextBtn" onclick="wizardNext()">Next →</button>
+            </div>
         </div>
     </div>
 

@@ -51,6 +51,7 @@ function initializeApp() {
             e.preventDefault();
             const page = e.target.dataset.page;
             navigateToPage(page);
+            if (page === 'settings') loadSettingsPage();
         });
     });
 
@@ -161,6 +162,49 @@ function updateGoalsDisplay() {
 
     const waterGoalCups = (userSettings.water_goal || 2000) / ML_PER_CUP;
     document.getElementById('waterGoal').textContent = Number.isInteger(waterGoalCups) ? waterGoalCups : waterGoalCups.toFixed(1);
+
+    updateProfileCard();
+}
+
+function updateProfileCard() {
+    const s = userSettings;
+    if (!s) return;
+
+    // Name + avatar
+    const name = s.name || '';
+    document.getElementById('profileName').textContent = name || 'Set up your profile';
+    document.getElementById('profileAvatar').textContent = name ? name.charAt(0).toUpperCase() : '?';
+
+    // Height
+    const hEl = document.getElementById('profileHeight');
+    if (s.height) {
+        const { ft, inches } = cmToFtIn(s.height);
+        hEl.textContent = `${ft}'${inches}"`;
+    } else { hEl.textContent = '—'; }
+
+    // Weight
+    const wEl = document.getElementById('profileWeight');
+    if (s.weight) {
+        wEl.textContent = `${Math.round(s.weight / KG_PER_LB)} lbs`;
+    } else { wEl.textContent = '—'; }
+
+    // Goal badge
+    const badge = document.getElementById('profileGoalBadge');
+    const goalLabels = { lose: '📉 Lose Weight', maintain: '⚖️ Maintain', gain: '📈 Gain Muscle' };
+    const goalColors = { lose: '#e74c3c', maintain: '#27ae60', gain: '#667eea' };
+    if (s.goal && goalLabels[s.goal]) {
+        badge.textContent = goalLabels[s.goal];
+        badge.style.background = goalColors[s.goal];
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+function goToSettings() {
+    navigateToPage('settings');
+    loadSettingsPage();
+    document.querySelector('[data-page="settings"]').classList.add('active');
 }
 
 function navigateToPage(page) {
@@ -576,20 +620,30 @@ async function loadSavedMeals() {
     }
 }
 
+// Store full meal data (with items) for the builder
+window.savedMealsData = [];
+
 function displaySavedMeals(meals) {
+    window.savedMealsData = meals;
     const mealsList = document.getElementById('savedMealsList');
 
     if (meals.length === 0) {
-        mealsList.innerHTML = '<p style="color: #999;">No saved meals yet. Save your favorite meals for quick access!</p>';
+        mealsList.innerHTML = '<p style="color: #999;">No saved meals yet. Use + Create to build one!</p>';
         return;
     }
 
     mealsList.innerHTML = meals.map(meal => `
-        <div class="saved-meal-card" onclick="openLoadMealModal(${meal.id}, '${meal.name.replace(/'/g, "\\'")}')">
-            <div class="saved-meal-name">${meal.name}</div>
-            <div class="saved-meal-info">
-                ${meal.meal_type} • ${Math.round(meal.calories)} cal<br>
-                P: ${Math.round(meal.protein)}g | C: ${Math.round(meal.carbs)}g | F: ${Math.round(meal.fat)}g
+        <div class="saved-meal-card">
+            <div class="saved-meal-main" onclick="openLoadMealModal(${meal.id}, '${meal.name.replace(/'/g, "\\'")}')">
+                <div class="saved-meal-name">${meal.name}</div>
+                <div class="saved-meal-info">
+                    ${meal.meal_type} • ${Math.round(meal.calories)} cal<br>
+                    P: ${Math.round(meal.protein)}g | C: ${Math.round(meal.carbs)}g | F: ${Math.round(meal.fat)}g
+                </div>
+            </div>
+            <div class="saved-meal-actions">
+                <button class="edit-btn" onclick="openMealBuilder(${meal.id})">Edit</button>
+                <button class="delete-btn" onclick="deleteSavedMeal(${meal.id}, '${meal.name.replace(/'/g, "\\'")}')">Delete</button>
             </div>
         </div>
     `).join('');
@@ -786,4 +840,483 @@ function saveMetricPreference(key, checked) {
     localStorage.setItem('trackedMetrics', JSON.stringify([...trackedMetrics]));
     applyTrackedMetrics();
     drawProgressRings();
+}
+
+// ─── Settings Page ────────────────────────────────────────────────────────────
+
+const CM_PER_INCH = 2.54;
+const IN_PER_FOOT = 12;
+const KG_PER_LB   = 0.453592;
+
+function cmToFtIn(cm) {
+    const totalIn = cm / CM_PER_INCH;
+    const ft = Math.floor(totalIn / IN_PER_FOOT);
+    const inches = Math.round(totalIn % IN_PER_FOOT);
+    return { ft, inches };
+}
+
+function ftInToCm(ft, inches) {
+    return ((ft * IN_PER_FOOT) + inches) * CM_PER_INCH;
+}
+
+function loadSettingsPage() {
+    if (!userSettings) return;
+    const s = userSettings;
+
+    document.getElementById('setName').value = s.name || '';
+    document.getElementById('setCalorieGoal').value = s.calorie_goal || 2000;
+    document.getElementById('setProteinGoal').value = s.protein_goal || 150;
+    document.getElementById('setCarbsGoal').value   = s.carbs_goal   || 200;
+    document.getElementById('setFatGoal').value     = s.fat_goal     || 65;
+    document.getElementById('setFiberGoal').value   = s.fiber_goal   || 30;
+    document.getElementById('setWaterGoal').value   = Math.round((s.water_goal || 2000) / ML_PER_CUP * 2) / 2;
+
+    if (s.height) {
+        const { ft, inches } = cmToFtIn(s.height);
+        document.getElementById('setHeightFt').value = ft;
+        document.getElementById('setHeightIn').value = inches;
+    }
+    if (s.weight) {
+        document.getElementById('setWeight').value = Math.round(s.weight / KG_PER_LB * 10) / 10;
+    }
+
+    const modelSelect = document.getElementById('setOpenAIModel');
+    if (s.openai_model) modelSelect.value = s.openai_model;
+}
+
+function showSettingsStatus(id, msg, isError = false) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.style.color = isError ? '#e74c3c' : '#27ae60';
+    setTimeout(() => { el.textContent = ''; }, 3000);
+}
+
+async function saveProfile() {
+    const name = document.getElementById('setName').value.trim();
+    try {
+        const res = await fetch(`${API_URL}/user/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify({ name })
+        });
+        if (res.ok) {
+            await loadUserSettings();
+            showSettingsStatus('profileStatus', '✓ Saved');
+        } else {
+            showSettingsStatus('profileStatus', 'Save failed', true);
+        }
+    } catch { showSettingsStatus('profileStatus', 'Error', true); }
+}
+
+async function saveMacroGoals() {
+    const payload = {
+        calorie_goal: parseFloat(document.getElementById('setCalorieGoal').value),
+        protein_goal: parseFloat(document.getElementById('setProteinGoal').value),
+        carbs_goal:   parseFloat(document.getElementById('setCarbsGoal').value),
+        fat_goal:     parseFloat(document.getElementById('setFatGoal').value),
+        fiber_goal:   parseFloat(document.getElementById('setFiberGoal').value),
+        water_goal:   parseFloat(document.getElementById('setWaterGoal').value) * ML_PER_CUP,
+    };
+    try {
+        const res = await fetch(`${API_URL}/user/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            await loadUserSettings();
+            drawProgressRings();
+            showSettingsStatus('macroGoalStatus', '✓ Saved');
+        } else {
+            showSettingsStatus('macroGoalStatus', 'Save failed', true);
+        }
+    } catch { showSettingsStatus('macroGoalStatus', 'Error', true); }
+}
+
+async function saveBodyStats() {
+    const ft      = parseFloat(document.getElementById('setHeightFt').value) || 0;
+    const inches  = parseFloat(document.getElementById('setHeightIn').value) || 0;
+    const weightLb = parseFloat(document.getElementById('setWeight').value);
+    const payload = {
+        height: ftInToCm(ft, inches),
+        weight: weightLb * KG_PER_LB,
+    };
+    try {
+        const res = await fetch(`${API_URL}/user/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            await loadUserSettings();
+            showSettingsStatus('bodyStatStatus', '✓ Saved');
+        } else {
+            showSettingsStatus('bodyStatStatus', 'Save failed', true);
+        }
+    } catch { showSettingsStatus('bodyStatStatus', 'Error', true); }
+}
+
+async function changePassword() {
+    const current  = document.getElementById('currentPassword').value;
+    const newPw    = document.getElementById('newPassword').value;
+    const confirm  = document.getElementById('confirmPassword').value;
+
+    if (!current || !newPw) { showSettingsStatus('passwordStatus', 'Fill in all fields', true); return; }
+    if (newPw !== confirm)  { showSettingsStatus('passwordStatus', 'Passwords do not match', true); return; }
+
+    try {
+        const params = new URLSearchParams({ current_password: current, new_password: newPw });
+        const res = await fetch(`${API_URL}/user/change-password?${params}`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        if (res.ok) {
+            authPassword = newPw;
+            sessionStorage.setItem('authPassword', newPw);
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            showSettingsStatus('passwordStatus', '✓ Password changed');
+        } else {
+            const data = await res.json();
+            showSettingsStatus('passwordStatus', data.detail || 'Incorrect current password', true);
+        }
+    } catch { showSettingsStatus('passwordStatus', 'Error', true); }
+}
+
+async function saveAIModel() {
+    const model = document.getElementById('setOpenAIModel').value;
+    try {
+        const res = await fetch(`${API_URL}/user/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify({ openai_model: model })
+        });
+        if (res.ok) {
+            await loadUserSettings();
+            showSettingsStatus('aiModelStatus', '✓ Saved');
+        } else {
+            showSettingsStatus('aiModelStatus', 'Save failed', true);
+        }
+    } catch { showSettingsStatus('aiModelStatus', 'Error', true); }
+}
+
+// ─── Macro Wizard ─────────────────────────────────────────────────────────────
+
+let wizardStep = 1;
+let wizardSex      = 'male';
+let wizardGoal     = null;
+let wizardActivity = null;
+let wizardActivityMultiplier = 1.2;
+
+function openMacroWizard() {
+    wizardStep = 1;
+    wizardGoal = null;
+    wizardActivity = null;
+    wizardSex = 'male';
+
+    // Pre-populate with saved body stats if available
+    if (userSettings) {
+        if (userSettings.height) {
+            const { ft, inches } = cmToFtIn(userSettings.height);
+            document.getElementById('wizardFt').value = ft;
+            document.getElementById('wizardIn').value = inches;
+        }
+        if (userSettings.weight) {
+            document.getElementById('wizardWeight').value =
+                Math.round(userSettings.weight / KG_PER_LB * 10) / 10;
+        }
+    }
+
+    selectSex('male');
+    showWizardStep(1);
+    document.getElementById('macroWizard').style.display = 'flex';
+}
+
+function closeMacroWizard() {
+    document.getElementById('macroWizard').style.display = 'none';
+}
+
+function closeMacroWizardOutside(event) {
+    if (event.target === document.getElementById('macroWizard')) closeMacroWizard();
+}
+
+function showWizardStep(step) {
+    wizardStep = step;
+    [1,2,3,4].forEach(i => {
+        document.getElementById(`wizardStep${i}`).style.display = i === step ? '' : 'none';
+    });
+    document.getElementById('wizardTitle').textContent = `Macro Wizard — Step ${Math.min(step, 3)} of 3`;
+    document.getElementById('wizardBackBtn').style.display = step > 1 ? '' : 'none';
+
+    const nextBtn = document.getElementById('wizardNextBtn');
+    if (step === 4) {
+        nextBtn.textContent = 'Apply These Goals';
+        nextBtn.onclick = applyWizardMacros;
+    } else {
+        nextBtn.textContent = 'Next →';
+        nextBtn.onclick = wizardNext;
+    }
+}
+
+function selectSex(sex) {
+    wizardSex = sex;
+    document.getElementById('sexMale').classList.toggle('active', sex === 'male');
+    document.getElementById('sexFemale').classList.toggle('active', sex === 'female');
+}
+
+function selectGoal(goal) {
+    wizardGoal = goal;
+    ['lose','maintain','gain'].forEach(g => {
+        document.getElementById(`goal${g.charAt(0).toUpperCase()+g.slice(1)}`).classList.toggle('selected', g === goal);
+    });
+}
+
+function selectActivity(key, multiplier) {
+    wizardActivity = key;
+    wizardActivityMultiplier = multiplier;
+    ['Sedentary','Light','Moderate','Very','Extreme'].forEach(k => {
+        document.getElementById(`act${k}`).classList.toggle('selected', k.toLowerCase() === key);
+    });
+}
+
+function wizardNext() {
+    if (wizardStep === 1) {
+        const age = parseFloat(document.getElementById('wizardAge').value);
+        const ft  = parseFloat(document.getElementById('wizardFt').value);
+        const wt  = parseFloat(document.getElementById('wizardWeight').value);
+        if (!age || !ft || !wt) { alert('Please fill in all fields.'); return; }
+    }
+    if (wizardStep === 2 && !wizardGoal) { alert('Please select a goal.'); return; }
+    if (wizardStep === 3) {
+        if (!wizardActivity) { alert('Please select an activity level.'); return; }
+        calculateWizardMacros();
+        showWizardStep(4);
+        return;
+    }
+    showWizardStep(wizardStep + 1);
+}
+
+function wizardBack() {
+    if (wizardStep > 1) showWizardStep(wizardStep - 1);
+}
+
+function calculateWizardMacros() {
+    const age      = parseFloat(document.getElementById('wizardAge').value);
+    const ft       = parseFloat(document.getElementById('wizardFt').value) || 0;
+    const inches   = parseFloat(document.getElementById('wizardIn').value) || 0;
+    const weightLb = parseFloat(document.getElementById('wizardWeight').value);
+    const heightCm = ftInToCm(ft, inches);
+    const weightKg = weightLb * KG_PER_LB;
+
+    // Mifflin-St Jeor BMR
+    const bmr = wizardSex === 'male'
+        ? (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5
+        : (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161;
+
+    let tdee = Math.round(bmr * wizardActivityMultiplier);
+
+    // Goal adjustment
+    if (wizardGoal === 'lose')     tdee -= 500;
+    if (wizardGoal === 'gain')     tdee += 300;
+
+    // Macro splits (protein g/kg basis + remaining from carbs/fat)
+    let proteinPct, carbsPct, fatPct;
+    if (wizardGoal === 'lose') {
+        proteinPct = 0.40; carbsPct = 0.35; fatPct = 0.25;
+    } else if (wizardGoal === 'gain') {
+        proteinPct = 0.30; carbsPct = 0.45; fatPct = 0.25;
+    } else {
+        proteinPct = 0.30; carbsPct = 0.40; fatPct = 0.30;
+    }
+
+    const protein = Math.round((tdee * proteinPct) / 4);
+    const carbs   = Math.round((tdee * carbsPct)   / 4);
+    const fat     = Math.round((tdee * fatPct)      / 9);
+    const fiber   = Math.round(tdee / 1000 * 14);   // 14g per 1000 kcal
+    const waterCups = Math.round(weightKg * 0.033 / (ML_PER_CUP / 1000) * 2) / 2; // 33ml/kg → cups
+
+    document.getElementById('wCalories').textContent = `${tdee} kcal`;
+    document.getElementById('wProtein').textContent  = `${protein} g`;
+    document.getElementById('wCarbs').textContent    = `${carbs} g`;
+    document.getElementById('wFat').textContent      = `${fat} g`;
+    document.getElementById('wFiber').textContent    = `${fiber} g`;
+    document.getElementById('wWater').textContent    = `${waterCups} cups`;
+
+    // Store for apply
+    window._wizardResult = { tdee, protein, carbs, fat, fiber, waterCups };
+}
+
+async function applyWizardMacros() {
+    const r = window._wizardResult;
+    if (!r) return;
+
+    // Populate settings fields
+    document.getElementById('setCalorieGoal').value = r.tdee;
+    document.getElementById('setProteinGoal').value = r.protein;
+    document.getElementById('setCarbsGoal').value   = r.carbs;
+    document.getElementById('setFatGoal').value     = r.fat;
+    document.getElementById('setFiberGoal').value   = r.fiber;
+    document.getElementById('setWaterGoal').value   = r.waterCups;
+
+    // Save macros + goal together
+    await fetch(`${API_URL}/user/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+        body: JSON.stringify({ goal: wizardGoal })
+    });
+    await saveMacroGoals();
+    closeMacroWizard();
+}
+
+// ─── Meal Builder (create / edit saved meals manually) ────────────────────────
+
+let mealBuilderEditId = null; // null = create, number = edit
+
+function openMealBuilder(mealId = null) {
+    mealBuilderEditId = mealId;
+    document.getElementById('mealBuilderTitle').textContent =
+        mealId ? 'Edit Saved Meal' : 'Create Saved Meal';
+    document.getElementById('mbItemsBody').innerHTML = '';
+
+    if (mealId) {
+        const meal = (window.savedMealsData || []).find(m => m.id === mealId);
+        if (!meal) return;
+        document.getElementById('mbMealName').value = meal.name;
+        document.getElementById('mbMealType').value = meal.meal_type || 'snack';
+        (meal.items || []).forEach(item => addMealBuilderRow(item));
+    } else {
+        document.getElementById('mbMealName').value = '';
+        document.getElementById('mbMealType').value = 'snack';
+        addMealBuilderRow(); // start with one empty row
+    }
+
+    updateMealBuilderTotals();
+    document.getElementById('mealBuilderModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('mbMealName').focus(), 50);
+}
+
+function closeMealBuilder() {
+    document.getElementById('mealBuilderModal').style.display = 'none';
+    mealBuilderEditId = null;
+}
+
+function closeMealBuilderOutside(event) {
+    if (event.target === document.getElementById('mealBuilderModal')) closeMealBuilder();
+}
+
+function addMealBuilderRow(item = null) {
+    const tbody = document.getElementById('mbItemsBody');
+    const tr = document.createElement('tr');
+    tr.className = 'mb-item-row';
+    tr.innerHTML = `
+        <td><input class="mb-input mb-food" type="text"   value="${item ? item.food_item : ''}" placeholder="e.g. Whey Protein"></td>
+        <td><input class="mb-input mb-qty"  type="number" value="${item ? item.quantity  : ''}" placeholder="1" step="0.5" min="0" oninput="updateMealBuilderTotals()"></td>
+        <td><input class="mb-input mb-unit" type="text"   value="${item ? (item.unit||'') : ''}" placeholder="scoop"></td>
+        <td><input class="mb-input mb-num"  type="number" value="${item ? Math.round(item.calories) : ''}" placeholder="0" min="0" oninput="updateMealBuilderTotals()"></td>
+        <td><input class="mb-input mb-num"  type="number" value="${item ? Math.round(item.protein)  : ''}" placeholder="0" min="0" oninput="updateMealBuilderTotals()"></td>
+        <td><input class="mb-input mb-num"  type="number" value="${item ? Math.round(item.carbs)    : ''}" placeholder="0" min="0" oninput="updateMealBuilderTotals()"></td>
+        <td><input class="mb-input mb-num"  type="number" value="${item ? Math.round(item.fat)      : ''}" placeholder="0" min="0" oninput="updateMealBuilderTotals()"></td>
+        <td><input class="mb-input mb-num"  type="number" value="${item ? Math.round(item.fiber)    : ''}" placeholder="0" min="0" oninput="updateMealBuilderTotals()"></td>
+        <td><button class="delete-btn mb-remove-btn" onclick="this.closest('tr').remove(); updateMealBuilderTotals()">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+    updateMealBuilderTotals();
+}
+
+function updateMealBuilderTotals() {
+    let cal = 0, pro = 0, carb = 0, fat = 0, fib = 0;
+    document.querySelectorAll('#mbItemsBody .mb-item-row').forEach(row => {
+        const nums = row.querySelectorAll('.mb-num');
+        cal  += parseFloat(nums[0].value) || 0;
+        pro  += parseFloat(nums[1].value) || 0;
+        carb += parseFloat(nums[2].value) || 0;
+        fat  += parseFloat(nums[3].value) || 0;
+        fib  += parseFloat(nums[4].value) || 0;
+    });
+    document.getElementById('mbTotalCal').textContent     = Math.round(cal);
+    document.getElementById('mbTotalProtein').textContent = Math.round(pro)  + 'g';
+    document.getElementById('mbTotalCarbs').textContent   = Math.round(carb) + 'g';
+    document.getElementById('mbTotalFat').textContent     = Math.round(fat)  + 'g';
+    document.getElementById('mbTotalFiber').textContent   = Math.round(fib)  + 'g';
+}
+
+async function saveMealBuilder() {
+    const name = document.getElementById('mbMealName').value.trim();
+    if (!name) { document.getElementById('mbMealName').focus(); return; }
+
+    const meal_type = document.getElementById('mbMealType').value;
+    const items = [];
+    let valid = true;
+
+    document.querySelectorAll('#mbItemsBody .mb-item-row').forEach(row => {
+        const food = row.querySelector('.mb-food').value.trim();
+        const qty  = parseFloat(row.querySelector('.mb-qty').value) || 1;
+        const unit = row.querySelector('.mb-unit').value.trim();
+        const nums = row.querySelectorAll('.mb-num');
+        const cal  = parseFloat(nums[0].value) || 0;
+        const pro  = parseFloat(nums[1].value) || 0;
+        const carb = parseFloat(nums[2].value) || 0;
+        const fat  = parseFloat(nums[3].value) || 0;
+        const fib  = parseFloat(nums[4].value) || 0;
+        if (!food) { valid = false; return; }
+        items.push({ food_item: food, quantity: qty, unit, calories: cal,
+                     protein: pro, carbs: carb, fat, fiber: fib });
+    });
+
+    if (!valid || items.length === 0) {
+        alert('Please fill in a food name for each item.');
+        return;
+    }
+
+    const body = JSON.stringify({ name, meal_type, items });
+    const url  = mealBuilderEditId
+        ? `${API_URL}/meals/${mealBuilderEditId}`
+        : `${API_URL}/meals/create`;
+    const method = mealBuilderEditId ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body
+        });
+        if (res.ok) {
+            closeMealBuilder();
+            loadSavedMeals();
+        } else {
+            alert('Failed to save meal.');
+        }
+    } catch { alert('Error saving meal.'); }
+}
+
+async function deleteSavedMeal(mealId, mealName) {
+    // Reuse the load meal modal as a generic confirm
+    pendingDeleteMealId = mealId;
+    document.getElementById('loadMealConfirmText').textContent =
+        `Delete "${mealName}"? This cannot be undone.`;
+    document.getElementById('loadMealModal').querySelector('.primary-btn').textContent = 'Delete';
+    document.getElementById('loadMealModal').querySelector('.primary-btn').onclick = confirmDeleteMeal;
+    document.getElementById('loadMealModal').style.display = 'flex';
+}
+
+let pendingDeleteMealId = null;
+
+async function confirmDeleteMeal() {
+    if (!pendingDeleteMealId) return;
+    const id = pendingDeleteMealId;
+    // Reset modal back to load behaviour
+    document.getElementById('loadMealModal').style.display = 'none';
+    document.getElementById('loadMealModal').querySelector('.primary-btn').textContent = 'Load Meal';
+    document.getElementById('loadMealModal').querySelector('.primary-btn').onclick = confirmLoadMeal;
+    pendingDeleteMealId = null;
+    pendingLoadMealId = null;
+
+    try {
+        const res = await fetch(`${API_URL}/meals/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        if (res.ok) loadSavedMeals();
+    } catch { alert('Failed to delete meal.'); }
 }

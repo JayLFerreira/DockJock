@@ -40,7 +40,7 @@ function initializeApp() {
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
     document.getElementById('addFoodBtn').addEventListener('click', handleAddFood);
-    document.getElementById('addManualBtn').addEventListener('click', () => alert('Manual entry feature coming soon!'));
+    document.getElementById('addManualBtn').addEventListener('click', openManualEntryModal);
     document.getElementById('saveMealBtn').addEventListener('click', handleSaveMeal);
     document.getElementById('editQuantity').addEventListener('input', handleEditQtyChange);
     document.getElementById('editQuantity').addEventListener('change', handleEditQtyChange);
@@ -52,6 +52,7 @@ function initializeApp() {
             const page = e.target.dataset.page;
             navigateToPage(page);
             if (page === 'settings') loadSettingsPage();
+            if (page === 'micros') loadMicrosPage();
         });
     });
 
@@ -228,7 +229,7 @@ function updateCurrentDate() {
 }
 
 // Progress Ring Drawing
-function drawProgressRing(canvasId, current, goal, color) {
+function drawProgressRing(canvasId, current, goal, colors, keepColor = false) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -237,19 +238,19 @@ function drawProgressRing(canvasId, current, goal, color) {
     const radius = 60;
     const lineWidth = 12;
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Calculate percentage
-    const percentage = Math.min((current / goal) * 100, 150); // Allow up to 150% to show over-consumption
+    const percentage = Math.min((current / goal) * 100, 150);
     const angle = Math.min((percentage / 100) * 2 * Math.PI, 2 * Math.PI);
 
-    // Determine color based on percentage
-    let ringColor = color;
-    if (percentage > 100) {
-        ringColor = '#ff4444'; // Red if over goal
-    } else if (percentage > 90) {
-        ringColor = '#ffa500'; // Orange when close
+    // Pick gradient colors based on percentage
+    let c1, cmid, c2;
+    if (!keepColor && percentage > 100) {
+        c1 = '#e57373'; cmid = '#ef5350'; c2 = '#c62828';
+    } else if (!keepColor && percentage > 90) {
+        c1 = '#ffb74d'; cmid = '#ffa726'; c2 = '#ef6c00';
+    } else {
+        c1 = colors[0]; cmid = colors[2]; c2 = colors[1];
     }
 
     // Background circle
@@ -259,15 +260,21 @@ function drawProgressRing(canvasId, current, goal, color) {
     ctx.lineWidth = lineWidth;
     ctx.stroke();
 
-    // Progress circle
+    // Gradient for progress arc
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, c1);
+    if (cmid) gradient.addColorStop(0.5, cmid);
+    gradient.addColorStop(1, c2);
+
+    // Progress arc
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + angle);
-    ctx.strokeStyle = ringColor;
+    ctx.strokeStyle = gradient;
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.stroke();
 
-    // Percentage text inside ring
+    // Percentage text
     const pct = Math.round((current / goal) * 100);
     ctx.fillStyle = percentage > 100 ? '#ff4444' : '#333';
     ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
@@ -276,11 +283,88 @@ function drawProgressRing(canvasId, current, goal, color) {
     ctx.fillText(`${pct}%`, centerX, centerY);
 }
 
+function drawMacroDonut(calories, fat, protein, carbs) {
+    const canvas = document.getElementById('macroDonutCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const R = 58;
+    const lw = 18;
+    const gap = 0.05;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#f0f0f0';
+    ctx.lineWidth = lw;
+    ctx.stroke();
+
+    const fatCals     = fat * 9;
+    const proteinCals = protein * 4;
+    const carbsCals   = carbs * 4;
+    const total = fatCals + proteinCals + carbsCals;
+
+    if (total > 0) {
+        const segments = [
+            { cals: fatCals,     color: '#ffb347' },
+            { cals: proteinCals, color: '#87c5f5' },
+            { cals: carbsCals,   color: '#81d4c0' },
+        ];
+
+        let startAngle = -Math.PI / 2;
+        for (const seg of segments) {
+            if (seg.cals <= 0) continue;
+            const sweep = (seg.cals / total) * 2 * Math.PI - gap;
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, startAngle, startAngle + sweep);
+            ctx.strokeStyle = seg.color;
+            ctx.lineWidth = lw;
+            ctx.lineCap = 'butt';
+            ctx.stroke();
+            startAngle += (seg.cals / total) * 2 * Math.PI;
+        }
+
+        // Update legend percentages
+        document.getElementById('donutFatPct').textContent     = Math.round(fatCals / total * 100) + '%';
+        document.getElementById('donutProteinPct').textContent = Math.round(proteinCals / total * 100) + '%';
+        document.getElementById('donutCarbsPct').textContent   = Math.round(carbsCals / total * 100) + '%';
+    } else {
+        document.getElementById('donutFatPct').textContent     = '—';
+        document.getElementById('donutProteinPct').textContent = '—';
+        document.getElementById('donutCarbsPct').textContent   = '—';
+    }
+
+    // Goal percentages
+    const goals = userSettings || {};
+    const gFatCals     = (goals.fat_goal     || 0) * 9;
+    const gProteinCals = (goals.protein_goal || 0) * 4;
+    const gCarbsCals   = (goals.carbs_goal   || 0) * 4;
+    const gTotal = gFatCals + gProteinCals + gCarbsCals;
+    if (gTotal > 0) {
+        document.getElementById('goalFatPct').textContent     = Math.round(gFatCals / gTotal * 100) + '%';
+        document.getElementById('goalProteinPct').textContent = Math.round(gProteinCals / gTotal * 100) + '%';
+        document.getElementById('goalCarbsPct').textContent   = Math.round(gCarbsCals / gTotal * 100) + '%';
+    }
+
+    // Center: calories
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(Math.round(calories), cx, cy - 9);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText('kcal', cx, cy + 11);
+}
+
 function drawProgressRings() {
-    const goals = userSettings || { 
-        calorie_goal: 2000, 
-        protein_goal: 150, 
-        carbs_goal: 200, 
+    const goals = userSettings || {
+        calorie_goal: 2000,
+        protein_goal: 150,
+        carbs_goal: 200,
         fat_goal: 65,
         fiber_goal: 30,
         water_goal: 2000
@@ -288,19 +372,20 @@ function drawProgressRings() {
 
     const current = window.currentTotals || { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, water: 0 };
 
-    drawProgressRing('calorieRing', current.calories, goals.calorie_goal, '#667eea');
-    drawProgressRing('proteinRing', current.protein, goals.protein_goal, '#f093fb');
-    drawProgressRing('carbsRing', current.carbs, goals.carbs_goal, '#4facfe');
-    drawProgressRing('fatRing', current.fat, goals.fat_goal, '#43e97b');
-    drawProgressRing('fiberRing', current.fiber, goals.fiber_goal, '#fa709a');
-    // Water ring uses cups
-    drawProgressRing('waterRing', current.water / ML_PER_CUP, goals.water_goal / ML_PER_CUP, '#30cfd0');
+    drawProgressRing('calorieRing', current.calories,              goals.calorie_goal,           ['#e57373', '#81c784', '#fff176']);
+    drawProgressRing('proteinRing', current.protein,               goals.protein_goal,           ['#e57373', '#81c784', '#fff176']);
+    drawProgressRing('carbsRing',   current.carbs,                 goals.carbs_goal,             ['#e57373', '#81c784', '#fff176']);
+    drawProgressRing('fatRing',     current.fat,                   goals.fat_goal,               ['#e57373', '#81c784', '#fff176']);
+    drawProgressRing('fiberRing',   current.fiber,                 goals.fiber_goal,             ['#e57373', '#81c784', '#fff176']);
+    drawProgressRing('waterRing',   current.water / ML_PER_CUP,   goals.water_goal / ML_PER_CUP, ['#1a78c2', '#4facfe', '#00b4d8'], true);
+    drawMacroDonut(current.calories, current.fat, current.protein, current.carbs);
 }
 
 async function loadTodayData() {
+    const tzOffset = new Date().getTimezoneOffset();
     try {
         // Load food entries
-        const foodResponse = await fetch(`${API_URL}/food/today`, {
+        const foodResponse = await fetch(`${API_URL}/food/today?tz_offset=${tzOffset}`, {
             headers: {
                 'Authorization': 'Basic ' + btoa(':' + authPassword)
             }
@@ -313,7 +398,7 @@ async function loadTodayData() {
         }
 
         // Load water
-        const waterResponse = await fetch(`${API_URL}/water/today`, {
+        const waterResponse = await fetch(`${API_URL}/water/today?tz_offset=${tzOffset}`, {
             headers: {
                 'Authorization': 'Basic ' + btoa(':' + authPassword)
             }
@@ -405,10 +490,23 @@ async function handleAddFood(e) {
         return;
     }
 
-    // Show loading
-    statusEl.textContent = 'Parsing food items...';
+    // Show loading with cycling messages
+    const loadingMessages = [
+        'Analyzing your food...',
+        'Fetching nutrition data...',
+        'Calculating macros...',
+        'Calculating micronutrients...',
+        'Almost there...'
+    ];
+    let loadingMsgIdx = 0;
+    statusEl.textContent = loadingMessages[0];
     statusEl.className = 'status-message loading';
     addBtn.disabled = true;
+    addBtn.textContent = 'Analyzing...';
+    const loadingInterval = setInterval(() => {
+        loadingMsgIdx = (loadingMsgIdx + 1) % loadingMessages.length;
+        statusEl.textContent = loadingMessages[loadingMsgIdx];
+    }, 1800);
 
     try {
         const response = await fetch(`${API_URL}/food/add`, {
@@ -475,27 +573,301 @@ async function handleAddFood(e) {
         statusEl.textContent = 'Error: Could not connect to server';
         statusEl.className = 'status-message error';
     } finally {
+        clearInterval(loadingInterval);
         addBtn.disabled = false;
+        addBtn.textContent = 'Add Entry';
     }
 }
 
-async function deleteEntry(entryId) {
-    if (!confirm('Delete this entry?')) return;
-    
+// ── Manual Entry Modal ──────────────────────────────────────────────────────
+
+function openManualEntryModal() {
+    document.getElementById('meFoodName').value = '';
+    document.getElementById('meQty').value = '1';
+    document.getElementById('meUnit').value = '';
+    document.getElementById('meCalories').value = '0';
+    document.getElementById('meProtein').value = '0';
+    document.getElementById('meCarbs').value = '0';
+    document.getElementById('meFat').value = '0';
+    document.getElementById('meFiber').value = '0';
+    document.getElementById('meSugar').value = '0';
+    document.getElementById('meStatus').className = 'status-message';
+    document.getElementById('meStatus').textContent = '';
+    document.getElementById('manualEntryModal').style.display = 'flex';
+}
+
+function closeManualEntryModal() {
+    document.getElementById('manualEntryModal').style.display = 'none';
+}
+
+function closeManualEntryModalOutside(e) {
+    if (e.target === document.getElementById('manualEntryModal')) closeManualEntryModal();
+}
+
+async function submitManualEntry() {
+    const foodName = document.getElementById('meFoodName').value.trim();
+    const statusEl = document.getElementById('meStatus');
+
+    if (!foodName) {
+        statusEl.textContent = 'Please enter a food name.';
+        statusEl.className = 'status-message error';
+        return;
+    }
+
+    const payload = {
+        food_name: foodName,
+        quantity: parseFloat(document.getElementById('meQty').value) || 1,
+        unit: document.getElementById('meUnit').value.trim() || 'serving',
+        meal_type: document.getElementById('meMealType').value,
+        calories: parseFloat(document.getElementById('meCalories').value) || 0,
+        protein: parseFloat(document.getElementById('meProtein').value) || 0,
+        carbs: parseFloat(document.getElementById('meCarbs').value) || 0,
+        fat: parseFloat(document.getElementById('meFat').value) || 0,
+        fiber: parseFloat(document.getElementById('meFiber').value) || 0,
+        sugar: parseFloat(document.getElementById('meSugar').value) || 0,
+    };
+
+    statusEl.textContent = 'Saving...';
+    statusEl.className = 'status-message loading';
+
     try {
-        const response = await fetch(`${API_URL}/food/${entryId}`, {
-            method: 'DELETE',
+        const response = await fetch(`${API_URL}/food/add-manual`, {
+            method: 'POST',
             headers: {
+                'Content-Type': 'application/json',
                 'Authorization': 'Basic ' + btoa(':' + authPassword)
-            }
+            },
+            body: JSON.stringify(payload)
         });
 
+        const data = await response.json();
         if (response.ok) {
+            closeManualEntryModal();
             await loadTodayData();
+        } else {
+            statusEl.textContent = `Error: ${data.detail || 'Failed to save'}`;
+            statusEl.className = 'status-message error';
         }
+    } catch (err) {
+        statusEl.textContent = 'Error: Could not connect to server';
+        statusEl.className = 'status-message error';
+    }
+}
+
+// ── Micronutrients Page ─────────────────────────────────────────────────────
+
+const MICRO_RDA = [
+    { key: 'vitamin_a_mcg',           label: 'Vitamin A',      rda: 900,  unit: 'mcg', group: 'Vitamins' },
+    { key: 'vitamin_c_mg',            label: 'Vitamin C',      rda: 90,   unit: 'mg',  group: 'Vitamins' },
+    { key: 'vitamin_d_mcg',           label: 'Vitamin D',      rda: 15,   unit: 'mcg', group: 'Vitamins' },
+    { key: 'vitamin_e_mg',            label: 'Vitamin E',      rda: 15,   unit: 'mg',  group: 'Vitamins' },
+    { key: 'vitamin_k_mcg',           label: 'Vitamin K',      rda: 120,  unit: 'mcg', group: 'Vitamins' },
+    { key: 'vitamin_b1_thiamin_mg',   label: 'B1 Thiamin',     rda: 1.2,  unit: 'mg',  group: 'Vitamins' },
+    { key: 'vitamin_b2_riboflavin_mg',label: 'B2 Riboflavin',  rda: 1.3,  unit: 'mg',  group: 'Vitamins' },
+    { key: 'vitamin_b3_niacin_mg',    label: 'B3 Niacin',      rda: 16,   unit: 'mg',  group: 'Vitamins' },
+    { key: 'vitamin_b6_mg',           label: 'Vitamin B6',     rda: 1.3,  unit: 'mg',  group: 'Vitamins' },
+    { key: 'vitamin_b12_mcg',         label: 'Vitamin B12',    rda: 2.4,  unit: 'mcg', group: 'Vitamins' },
+    { key: 'folate_mcg',              label: 'Folate',         rda: 400,  unit: 'mcg', group: 'Vitamins' },
+    { key: 'choline_mg',              label: 'Choline',        rda: 550,  unit: 'mg',  group: 'Vitamins' },
+    { key: 'calcium_mg',              label: 'Calcium',        rda: 1000, unit: 'mg',  group: 'Minerals' },
+    { key: 'iron_mg',                 label: 'Iron',           rda: 8,    unit: 'mg',  group: 'Minerals' },
+    { key: 'magnesium_mg',            label: 'Magnesium',      rda: 420,  unit: 'mg',  group: 'Minerals' },
+    { key: 'phosphorus_mg',           label: 'Phosphorus',     rda: 700,  unit: 'mg',  group: 'Minerals' },
+    { key: 'potassium_mg',            label: 'Potassium',      rda: 3400, unit: 'mg',  group: 'Minerals' },
+    { key: 'sodium_mg',               label: 'Sodium',         rda: 2300, unit: 'mg',  group: 'Minerals', upperLimit: true },
+    { key: 'zinc_mg',                 label: 'Zinc',           rda: 11,   unit: 'mg',  group: 'Minerals' },
+    { key: 'copper_mg',               label: 'Copper',         rda: 0.9,  unit: 'mg',  group: 'Minerals' },
+    { key: 'manganese_mg',            label: 'Manganese',      rda: 2.3,  unit: 'mg',  group: 'Minerals' },
+    { key: 'selenium_mcg',            label: 'Selenium',       rda: 55,   unit: 'mcg', group: 'Minerals' },
+];
+
+let microsPeriod = 'today';
+let microsCurrentTotals = {};
+
+async function loadMicrosPage(period) {
+    if (period) microsPeriod = period;
+    const container = document.getElementById('microsContent');
+    const dateEl = document.getElementById('microsDate');
+    const titleEl = document.getElementById('microsTitle');
+
+    // Update toggle state
+    document.getElementById('microsTodayBtn').classList.toggle('active', microsPeriod === 'today');
+    document.getElementById('microsWeekBtn').classList.toggle('active', microsPeriod === 'week');
+
+    // Clear analysis when switching periods
+    document.getElementById('microsAnalysis').style.display = 'none';
+
+    let entries, rdaMultiplier;
+
+    if (microsPeriod === 'today') {
+        entries = window.currentEntries || [];
+        rdaMultiplier = 1;
+        titleEl.textContent = "Today's Micronutrients";
+        const now = new Date();
+        dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    } else {
+        titleEl.textContent = "Weekly Micronutrients";
+        dateEl.textContent = "7-day totals vs. weekly goal (7× RDA)";
+        container.innerHTML = '<p class="micros-empty">Loading...</p>';
+        try {
+            const tzOffset = new Date().getTimezoneOffset();
+            const res = await fetch(`${API_URL}/food/week?tz_offset=${tzOffset}`, {
+                headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+            });
+            const data = await res.json();
+            entries = data.entries;
+            rdaMultiplier = data.days;
+        } catch {
+            container.innerHTML = '<p class="micros-empty">Error loading weekly data.</p>';
+            return;
+        }
+    }
+
+    if (entries.length === 0) {
+        container.innerHTML = `<p class="micros-empty">No food logged. Add entries to see micronutrient data.</p>`;
+        return;
+    }
+
+    // Aggregate totals
+    const totals = {};
+    entries.forEach(entry => {
+        let micros = {};
+        try { micros = JSON.parse(entry.micros_json || '{}'); } catch {}
+        Object.entries(micros).forEach(([k, v]) => {
+            totals[k] = (totals[k] || 0) + (v || 0);
+        });
+    });
+    microsCurrentTotals = { ...totals };
+
+    // Build HTML
+    const groups = ['Vitamins', 'Minerals'];
+    let html = '';
+    groups.forEach(group => {
+        html += `<div class="micros-group"><h3 class="micros-group-title">${group}</h3><div class="micros-list">`;
+        MICRO_RDA.filter(m => m.group === group).forEach(micro => {
+            const amount = totals[micro.key] || 0;
+            const goal = micro.rda * rdaMultiplier;
+            const pct = Math.min((amount / goal) * 100, 100);
+            const displayAmt = amount < 10 ? amount.toFixed(1) : Math.round(amount);
+            const displayGoal = goal < 10 ? goal.toFixed(1) : Math.round(goal);
+            let barClass;
+            if (micro.upperLimit) {
+                barClass = pct < 80 ? 'micros-bar-good' : pct < 100 ? 'micros-bar-warn' : 'micros-bar-over';
+            } else {
+                barClass = pct >= 90 ? 'micros-bar-good' : pct >= 30 ? 'micros-bar-warn' : 'micros-bar-low';
+            }
+            html += `
+                <div class="micros-row">
+                    <div class="micros-meta">
+                        <span class="micros-label">${micro.label}</span>
+                        <span class="micros-amount">${displayAmt} / ${displayGoal} ${micro.unit}</span>
+                    </div>
+                    <div class="micros-bar-wrap">
+                        <div class="micros-bar ${barClass}" style="width:${pct}%"></div>
+                    </div>
+                </div>`;
+        });
+        html += '</div></div>';
+    });
+    container.innerHTML = html;
+}
+
+async function analyzeMicros() {
+    const btn = document.getElementById('analyzeBtn');
+    const analysisEl = document.getElementById('microsAnalysis');
+
+    if (Object.keys(microsCurrentTotals).length === 0) {
+        analysisEl.innerHTML = '<div class="analysis-card analysis-empty">Log some food first to analyze your micronutrients.</div>';
+        analysisEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+    analysisEl.innerHTML = '<div class="analysis-card analysis-loading">Analyzing your micronutrient intake...</div>';
+    analysisEl.style.display = 'block';
+
+    try {
+        const response = await fetch(`${API_URL}/micros/analyze`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic ' + btoa(':' + authPassword)
+            },
+            body: JSON.stringify({
+                period: microsPeriod,
+                days: microsPeriod === 'week' ? 7 : 1,
+                micros: microsCurrentTotals
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail);
+
+        let html = `<div class="analysis-card">
+            <div class="analysis-summary">${data.summary}</div>`;
+
+        if (data.deficiencies && data.deficiencies.length > 0) {
+            html += `<div class="analysis-section-title">Top Deficiencies</div>`;
+            data.deficiencies.forEach(d => {
+                html += `<div class="analysis-deficiency">
+                    <div class="analysis-def-header">
+                        <span class="analysis-nutrient">${d.nutrient}</span>
+                        <span class="analysis-pct">${d.pct_of_rda}% of RDA</span>
+                    </div>
+                    <div class="analysis-foods">Eat more: ${d.foods.join(', ')}</div>
+                </div>`;
+            });
+        }
+
+        if (data.strengths && data.strengths.length > 0) {
+            html += `<div class="analysis-section-title">Strengths</div>
+                <ul class="analysis-strengths">
+                    ${data.strengths.map(s => `<li>${s}</li>`).join('')}
+                </ul>`;
+        }
+
+        html += '</div>';
+        analysisEl.innerHTML = html;
+    } catch (err) {
+        analysisEl.innerHTML = `<div class="analysis-card analysis-error">Error: ${err.message || 'Could not analyze'}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Analyze Weaknesses';
+    }
+}
+
+let pendingDeleteEntryId = null;
+
+function deleteEntry(entryId) {
+    const entry = (window.currentEntries || []).find(e => e.id === entryId);
+    const name = entry ? entry.food_item : 'this entry';
+    document.getElementById('deleteEntryText').textContent = `Remove "${name}" from today's log?`;
+    pendingDeleteEntryId = entryId;
+    document.getElementById('deleteEntryModal').style.display = 'flex';
+}
+
+function closeDeleteEntryModal() {
+    document.getElementById('deleteEntryModal').style.display = 'none';
+    pendingDeleteEntryId = null;
+}
+
+function closeDeleteEntryModalOutside(e) {
+    if (e.target === document.getElementById('deleteEntryModal')) closeDeleteEntryModal();
+}
+
+async function confirmDeleteEntry() {
+    if (!pendingDeleteEntryId) return;
+    const id = pendingDeleteEntryId;
+    closeDeleteEntryModal();
+    try {
+        const response = await fetch(`${API_URL}/food/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        if (response.ok) await loadTodayData();
     } catch (error) {
         console.error('Error deleting entry:', error);
-        alert('Failed to delete entry');
     }
 }
 
@@ -511,7 +883,7 @@ async function addWater(amount) {
         });
 
         if (response.ok) {
-            const waterResponse = await fetch(`${API_URL}/water/today`, {
+            const waterResponse = await fetch(`${API_URL}/water/today?tz_offset=${new Date().getTimezoneOffset()}`, {
                 headers: {
                     'Authorization': 'Basic ' + btoa(':' + authPassword)
                 }

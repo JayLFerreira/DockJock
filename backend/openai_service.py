@@ -95,7 +95,10 @@ def check_cache(food_name: str, db: Session):
     return cached
 
 def add_to_cache(food_name: str, unit: str, nutrition_data: dict, db: Session):
-    """Add food to cache"""
+    """Add food to cache, skip if already exists"""
+    existing = db.query(CachedFood).filter(CachedFood.food_name == food_name.lower()).first()
+    if existing:
+        return existing
     cached = CachedFood(
         food_name=food_name.lower(),
         unit=unit,

@@ -30,6 +30,7 @@
                 </div>
                 <div class="nav-links">
                     <a href="#" data-page="home" class="active">Home</a>
+                    <a href="#" data-page="micros">Micros</a>
                     <a href="#" data-page="history">History</a>
                     <a href="#" data-page="settings">Settings</a>
                     <a href="#" id="logoutBtn">Logout</a>
@@ -44,6 +45,9 @@
 
                     <!-- Profile + Rings row -->
                     <div class="home-top-row">
+
+                    <!-- Profile Col (profile card + macro donut) -->
+                    <div class="profile-col">
 
                     <!-- Profile Card -->
                     <div class="profile-card">
@@ -65,6 +69,53 @@
                             <button class="profile-edit-btn" onclick="goToSettings()">Edit</button>
                         </div>
                     </div>
+
+                    <!-- Macro Breakdown Donut -->
+                    <div class="macro-donut-card">
+                        <div class="macro-donut-title">Macro Breakdown</div>
+                        <div class="macro-donut-wrap">
+                            <canvas id="macroDonutCanvas" width="160" height="160"></canvas>
+                        </div>
+                        <div class="macro-donut-legend">
+                            <div class="macro-donut-legend-item">
+                                <span class="mdl-dot" style="background:#ffb347"></span>
+                                <span class="mdl-label">F</span>
+                                <span class="mdl-pct" id="donutFatPct">—</span>
+                            </div>
+                            <div class="macro-donut-legend-item">
+                                <span class="mdl-dot" style="background:#87c5f5"></span>
+                                <span class="mdl-label">P</span>
+                                <span class="mdl-pct" id="donutProteinPct">—</span>
+                            </div>
+                            <div class="macro-donut-legend-item">
+                                <span class="mdl-dot" style="background:#81d4c0"></span>
+                                <span class="mdl-label">C</span>
+                                <span class="mdl-pct" id="donutCarbsPct">—</span>
+                            </div>
+                        </div>
+                        <div class="macro-donut-goal">
+                            <div class="macro-donut-goal-label">Your Goal</div>
+                            <div class="macro-donut-legend">
+                                <div class="macro-donut-legend-item">
+                                    <span class="mdl-dot" style="background:#ffb347"></span>
+                                    <span class="mdl-label">F</span>
+                                    <span class="mdl-pct" id="goalFatPct">—</span>
+                                </div>
+                                <div class="macro-donut-legend-item">
+                                    <span class="mdl-dot" style="background:#87c5f5"></span>
+                                    <span class="mdl-label">P</span>
+                                    <span class="mdl-pct" id="goalProteinPct">—</span>
+                                </div>
+                                <div class="macro-donut-legend-item">
+                                    <span class="mdl-dot" style="background:#81d4c0"></span>
+                                    <span class="mdl-label">C</span>
+                                    <span class="mdl-pct" id="goalCarbsPct">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    </div> <!-- /profile-col -->
 
                     <!-- Rings -->
                     <div class="rings-col">
@@ -129,6 +180,7 @@
                                 <span class="ring-goal">/ <span id="waterGoal">8.3</span> cups</span>
                                 <span class="ring-name">Water</span>
                                 <div class="water-controls">
+                                    <button class="water-btn water-btn-remove" onclick="addWater(-240)">−1 cup</button>
                                     <button class="water-btn" onclick="addWater(240)">+1 cup</button>
                                     <button class="water-btn" onclick="addWater(480)">+2 cups</button>
                                 </div>
@@ -295,6 +347,27 @@
                             <button class="primary-btn" onclick="confirmLoadMeal()">Load Meal</button>
                             <button class="secondary-btn modal-cancel-btn" onclick="closeLoadMealModal()">Cancel</button>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Micros Page -->
+                <div id="microsPage" class="content-page">
+                    <div class="micros-header">
+                        <div>
+                            <h1 id="microsTitle">Today's Micronutrients</h1>
+                            <p class="micros-date" id="microsDate"></p>
+                        </div>
+                        <div class="micros-controls">
+                            <div class="micros-toggle">
+                                <button class="micros-toggle-btn active" id="microsTodayBtn" onclick="loadMicrosPage('today')">Today</button>
+                                <button class="micros-toggle-btn" id="microsWeekBtn" onclick="loadMicrosPage('week')">This Week</button>
+                            </div>
+                            <button class="analyze-weaknesses-btn" id="analyzeBtn" onclick="analyzeMicros()">Analyze Weaknesses</button>
+                        </div>
+                    </div>
+                    <div id="microsAnalysis" style="display:none"></div>
+                    <div id="microsContent">
+                        <p class="micros-empty">No food logged today. Add entries to see micronutrient data.</p>
                     </div>
                 </div>
 
@@ -613,6 +686,94 @@
             <div class="modal-footer wizard-footer">
                 <button class="secondary-btn modal-cancel-btn" id="wizardBackBtn" onclick="wizardBack()" style="display:none">← Back</button>
                 <button class="primary-btn" id="wizardNextBtn" onclick="wizardNext()">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Entry Confirm Modal -->
+    <div id="deleteEntryModal" class="modal-overlay" style="display:none" onclick="closeDeleteEntryModalOutside(event)">
+        <div class="modal-box" style="max-width:380px">
+            <div class="modal-header">
+                <h3>Delete Entry</h3>
+                <button class="modal-close" onclick="closeDeleteEntryModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteEntryText" style="color:#555; margin-bottom:4px">Remove this entry from today's log?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="primary-btn" style="background:#e74c3c" onclick="confirmDeleteEntry()">Delete</button>
+                <button class="secondary-btn modal-cancel-btn" onclick="closeDeleteEntryModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Entry Modal -->
+    <div id="manualEntryModal" class="modal-overlay" style="display:none" onclick="closeManualEntryModalOutside(event)">
+        <div class="modal-box" style="max-width:480px">
+            <div class="modal-header">
+                <h3>Manual Food Entry</h3>
+                <button class="modal-close" onclick="closeManualEntryModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="me-row">
+                    <div class="me-field me-wide">
+                        <label>Food Name</label>
+                        <input type="text" id="meFoodName" placeholder="e.g. Protein Shake">
+                    </div>
+                </div>
+                <div class="me-row">
+                    <div class="me-field">
+                        <label>Qty</label>
+                        <input type="number" id="meQty" min="0.1" step="0.5" value="1">
+                    </div>
+                    <div class="me-field">
+                        <label>Unit</label>
+                        <input type="text" id="meUnit" placeholder="oz, g, cup...">
+                    </div>
+                    <div class="me-field">
+                        <label>Meal</label>
+                        <select id="meMealType">
+                            <option>Breakfast</option>
+                            <option>Lunch</option>
+                            <option>Dinner</option>
+                            <option>Snack</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="me-divider">Macros</div>
+                <div class="me-row">
+                    <div class="me-field">
+                        <label>Calories</label>
+                        <input type="number" id="meCalories" min="0" step="1" value="0">
+                    </div>
+                    <div class="me-field">
+                        <label>Protein (g)</label>
+                        <input type="number" id="meProtein" min="0" step="0.1" value="0">
+                    </div>
+                    <div class="me-field">
+                        <label>Carbs (g)</label>
+                        <input type="number" id="meCarbs" min="0" step="0.1" value="0">
+                    </div>
+                </div>
+                <div class="me-row">
+                    <div class="me-field">
+                        <label>Fat (g)</label>
+                        <input type="number" id="meFat" min="0" step="0.1" value="0">
+                    </div>
+                    <div class="me-field">
+                        <label>Fiber (g)</label>
+                        <input type="number" id="meFiber" min="0" step="0.1" value="0">
+                    </div>
+                    <div class="me-field">
+                        <label>Sugar (g)</label>
+                        <input type="number" id="meSugar" min="0" step="0.1" value="0">
+                    </div>
+                </div>
+                <div id="meStatus" class="status-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="primary-btn" onclick="submitManualEntry()">Add Entry</button>
+                <button class="secondary-btn modal-cancel-btn" onclick="closeManualEntryModal()">Cancel</button>
             </div>
         </div>
     </div>

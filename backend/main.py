@@ -279,12 +279,15 @@ async def add_manual_food_entry(
 @app.get("/api/food/today")
 async def get_today_entries(
     user: User = Depends(verify_password),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
 ):
-    """Get today's food entries"""
+    """Get today's food entries. tz_offset = JS getTimezoneOffset() (minutes behind UTC)."""
     from datetime import datetime, timedelta
-    
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    local_now = datetime.utcnow() - timedelta(minutes=tz_offset)
+    local_today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = local_today_start + timedelta(minutes=tz_offset)
     today_end = today_start + timedelta(days=1)
     
     entries = db.query(FoodEntry).filter(
@@ -318,11 +321,133 @@ async def get_today_entries(
                 "carbs": e.carbs,
                 "fat": e.fat,
                 "fiber": e.fiber,
+                "micros_json": e.micros_json,
                 "time": e.date.isoformat()
             } for e in entries
         ],
         "totals": totals
     }
+
+
+@app.get("/api/food/week")
+async def get_week_entries(
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Get last 7 days of food entries. tz_offset = JS getTimezoneOffset()."""
+    from datetime import datetime, timedelta
+
+    local_now = datetime.utcnow() - timedelta(minutes=tz_offset)
+    local_today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = local_today_start - timedelta(days=6)
+    week_start_utc = week_start + timedelta(minutes=tz_offset)
+    today_end_utc = local_today_start + timedelta(days=1) + timedelta(minutes=tz_offset)
+
+    entries = db.query(FoodEntry).filter(
+        FoodEntry.user_id == user.id,
+        FoodEntry.date >= week_start_utc,
+        FoodEntry.date < today_end_utc
+    ).order_by(FoodEntry.date.asc()).all()
+
+    return {
+        "entries": [
+            {
+                "food_item": e.food_item,
+                "micros_json": e.micros_json,
+                "date": e.date.isoformat()
+            } for e in entries
+        ],
+        "days": 7
+    }
+
+
+class MicroAnalysisRequest(BaseModel):
+    period: str
+    days: int
+    micros: dict
+
+
+@app.post("/api/micros/analyze")
+async def analyze_micros(
+    request: MicroAnalysisRequest,
+    user: User = Depends(verify_password)
+):
+    """Use OpenAI to analyze micronutrient weaknesses."""
+    from openai import OpenAI
+    import os
+
+    rda = {
+        "vitamin_a_mcg": 900, "vitamin_c_mg": 90, "vitamin_d_mcg": 15,
+        "vitamin_e_mg": 15, "vitamin_k_mcg": 120, "vitamin_b1_thiamin_mg": 1.2,
+        "vitamin_b2_riboflavin_mg": 1.3, "vitamin_b3_niacin_mg": 16,
+        "vitamin_b6_mg": 1.3, "vitamin_b12_mcg": 2.4, "folate_mcg": 400,
+        "choline_mg": 550, "calcium_mg": 1000, "iron_mg": 8,
+        "magnesium_mg": 420, "phosphorus_mg": 700, "potassium_mg": 3400,
+        "sodium_mg": 2300, "zinc_mg": 11, "copper_mg": 0.9,
+        "manganese_mg": 2.3, "selenium_mcg": 55
+    }
+
+    label_map = {
+        "vitamin_a_mcg": "Vitamin A (mcg)", "vitamin_c_mg": "Vitamin C (mg)",
+        "vitamin_d_mcg": "Vitamin D (mcg)", "vitamin_e_mg": "Vitamin E (mg)",
+        "vitamin_k_mcg": "Vitamin K (mcg)", "vitamin_b1_thiamin_mg": "B1 Thiamin (mg)",
+        "vitamin_b2_riboflavin_mg": "B2 Riboflavin (mg)", "vitamin_b3_niacin_mg": "B3 Niacin (mg)",
+        "vitamin_b6_mg": "Vitamin B6 (mg)", "vitamin_b12_mcg": "Vitamin B12 (mcg)",
+        "folate_mcg": "Folate (mcg)", "choline_mg": "Choline (mg)",
+        "calcium_mg": "Calcium (mg)", "iron_mg": "Iron (mg)",
+        "magnesium_mg": "Magnesium (mg)", "phosphorus_mg": "Phosphorus (mg)",
+        "potassium_mg": "Potassium (mg)", "sodium_mg": "Sodium (mg)",
+        "zinc_mg": "Zinc (mg)", "copper_mg": "Copper (mg)",
+        "manganese_mg": "Manganese (mg)", "selenium_mcg": "Selenium (mcg)"
+    }
+
+    lines = []
+    for key, rda_val in rda.items():
+        avg = request.micros.get(key, 0)
+        pct = round((avg / rda_val) * 100) if rda_val else 0
+        lines.append(f"  {label_map[key]}: {round(avg, 1)} / {rda_val} ({pct}% of RDA)")
+
+    period_label = "today" if request.period == "today" else f"the past {request.days} days (values are daily averages)"
+    micro_data = "\n".join(lines)
+
+    prompt = f"""You are a nutrition coach for a fitness-focused office worker. Analyze their micronutrient intake for {period_label}:
+
+{micro_data}
+
+Return ONLY valid JSON, no markdown:
+{{
+  "summary": "One sentence overall assessment (be direct and specific)",
+  "deficiencies": [
+    {{
+      "nutrient": "Nutrient name",
+      "pct_of_rda": 14,
+      "foods": ["food 1", "food 2", "food 3"]
+    }}
+  ],
+  "strengths": ["strength 1", "strength 2"]
+}}
+
+Rules:
+- List top 3-5 deficiencies (lowest % of RDA first), skip any above 80%
+- Foods should be practical, everyday options
+- Strengths: only mention nutrients above 90% RDA
+- Be concise"""
+
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 class EditFoodRequest(BaseModel):
     food_name: Optional[str] = None
@@ -410,12 +535,15 @@ async def add_water(
 @app.get("/api/water/today")
 async def get_today_water(
     user: User = Depends(verify_password),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
 ):
-    """Get today's total water intake"""
+    """Get today's water intake. tz_offset = JS getTimezoneOffset() (minutes behind UTC)."""
     from datetime import datetime, timedelta
-    
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    local_now = datetime.utcnow() - timedelta(minutes=tz_offset)
+    local_today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = local_today_start + timedelta(minutes=tz_offset)
     today_end = today_start + timedelta(days=1)
     
     entries = db.query(WaterEntry).filter(
@@ -424,8 +552,8 @@ async def get_today_water(
         WaterEntry.date < today_end
     ).all()
     
-    total = sum(e.amount for e in entries)
-    
+    total = max(0, sum(e.amount for e in entries))
+
     return {"total": total}
 
 # Saved Meals

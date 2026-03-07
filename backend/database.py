@@ -26,6 +26,7 @@ class User(Base):
     openai_model = Column(String, default="gpt-4o-mini")
     name = Column(String, nullable=True)
     goal = Column(String, nullable=True)  # 'lose', 'maintain', 'gain'
+    weigh_in_day = Column(Integer, default=0)  # 0=Mon, 1=Tue, ... 6=Sun
 
 class FoodEntry(Base):
     __tablename__ = "food_entries"
@@ -63,6 +64,14 @@ class WaterEntry(Base):
     user_id = Column(Integer, default=1)
     date = Column(DateTime, default=datetime.utcnow)
     amount = Column(Float, default=0)  # in ml
+
+class WeightEntry(Base):
+    __tablename__ = "weight_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, default=1)
+    date = Column(DateTime, default=datetime.utcnow)
+    weight_kg = Column(Float, nullable=False)
 
 class DailySummary(Base):
     __tablename__ = "daily_summaries"
@@ -111,7 +120,7 @@ def init_db():
         existing_users = [row[1] for row in conn.execute(
             __import__('sqlalchemy').text("PRAGMA table_info(users)")
         )]
-        for col, typedef in [("name", "VARCHAR"), ("goal", "VARCHAR")]:
+        for col, typedef in [("name", "VARCHAR"), ("goal", "VARCHAR"), ("weigh_in_day", "INTEGER DEFAULT 0")]:
             if col not in existing_users:
                 conn.execute(__import__('sqlalchemy').text(
                     f"ALTER TABLE users ADD COLUMN {col} {typedef}"
@@ -127,6 +136,14 @@ def init_db():
         user = User(password_hash=bcrypt.hash(default_password))
         db.add(user)
         db.commit()
+
+    # Seed weight_entries from user.weight if table is empty and weight is set
+    if user and user.weight:
+        count = db.query(WeightEntry).filter(WeightEntry.user_id == user.id).count()
+        if count == 0:
+            db.add(WeightEntry(user_id=user.id, weight_kg=user.weight))
+            db.commit()
+
     db.close()
 
 def get_db():

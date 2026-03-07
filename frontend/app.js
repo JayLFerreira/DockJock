@@ -1,3 +1,17 @@
+// ─── Theme ───────────────────────────────────────────────────────────────────
+function applyTheme() {
+    const theme = localStorage.getItem('theme') || 'light';
+    document.body.setAttribute('data-theme', theme);
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+    const next = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', next);
+    applyTheme();
+}
+applyTheme(); // apply immediately before anything renders
+
 // Global state
 let isLoggedIn = false;
 let authPassword = '';
@@ -53,6 +67,7 @@ function initializeApp() {
             navigateToPage(page);
             if (page === 'settings') loadSettingsPage();
             if (page === 'micros') loadMicrosPage();
+            if (page === 'history') loadHistoryPage();
         });
     });
 
@@ -65,14 +80,18 @@ function showLoginPage() {
     document.getElementById('mainApp').classList.remove('active');
 }
 
-function showMainApp() {
+async function showMainApp() {
     document.getElementById('loginPage').classList.remove('active');
     document.getElementById('mainApp').classList.add('active');
     loadTrackedMetrics();
-    loadUserSettings();
+    await loadUserSettings();
     loadTodayData();
     loadSavedMeals();
     drawProgressRings();
+    applyTheme();
+    checkWeighInReminder();
+    startMidnightWatcher();
+    startNotifWatcher();
 }
 
 async function handleLogin(e) {
@@ -499,6 +518,7 @@ async function handleAddFood(e) {
         'Almost there...'
     ];
     let loadingMsgIdx = 0;
+    statusEl.style.display = '';
     statusEl.textContent = loadingMessages[0];
     statusEl.className = 'status-message loading';
     addBtn.disabled = true;
@@ -747,24 +767,27 @@ async function loadMicrosPage(period) {
         MICRO_RDA.filter(m => m.group === group).forEach(micro => {
             const amount = totals[micro.key] || 0;
             const goal = micro.rda * rdaMultiplier;
-            const pct = Math.min((amount / goal) * 100, 100);
+            const rawPct = (amount / goal) * 100;
+            const barPct = Math.min(rawPct, 100);
+            const displayPct = rawPct >= 10 ? Math.round(rawPct) : rawPct.toFixed(1);
             const displayAmt = amount < 10 ? amount.toFixed(1) : Math.round(amount);
             const displayGoal = goal < 10 ? goal.toFixed(1) : Math.round(goal);
-            let barClass;
+            let barClass, pctColor;
             if (micro.upperLimit) {
-                barClass = pct < 80 ? 'micros-bar-good' : pct < 100 ? 'micros-bar-warn' : 'micros-bar-over';
+                barClass = barPct < 80 ? 'micros-bar-good' : barPct < 100 ? 'micros-bar-warn' : 'micros-bar-over';
+                pctColor = barPct < 80 ? '#27ae60' : barPct < 100 ? '#e67e22' : '#e74c3c';
             } else {
-                barClass = pct >= 90 ? 'micros-bar-good' : pct >= 30 ? 'micros-bar-warn' : 'micros-bar-low';
+                barClass = barPct >= 90 ? 'micros-bar-good' : barPct >= 30 ? 'micros-bar-warn' : 'micros-bar-low';
+                pctColor = barPct >= 90 ? '#27ae60' : barPct >= 30 ? '#e67e22' : '#e74c3c';
             }
             html += `
                 <div class="micros-row">
-                    <div class="micros-meta">
-                        <span class="micros-label">${micro.label}</span>
-                        <span class="micros-amount">${displayAmt} / ${displayGoal} ${micro.unit}</span>
-                    </div>
+                    <span class="micros-label">${micro.label}</span>
                     <div class="micros-bar-wrap">
-                        <div class="micros-bar ${barClass}" style="width:${pct}%"></div>
+                        <div class="micros-bar ${barClass}" style="width:${barPct}%"></div>
                     </div>
+                    <span class="micros-pct" style="color:${pctColor}">${displayPct}%</span>
+                    <span class="micros-amount">${displayAmt} / ${displayGoal} ${micro.unit}</span>
                 </div>`;
         });
         html += '</div></div>';
@@ -1254,6 +1277,9 @@ function loadSettingsPage() {
 
     const modelSelect = document.getElementById('setOpenAIModel');
     if (s.openai_model) modelSelect.value = s.openai_model;
+
+    document.getElementById('setWeighInDay').value = s.weigh_in_day ?? 0;
+    loadNotifPrefs();
 }
 
 function showSettingsStatus(id, msg, isError = false) {
@@ -1309,9 +1335,11 @@ async function saveBodyStats() {
     const ft      = parseFloat(document.getElementById('setHeightFt').value) || 0;
     const inches  = parseFloat(document.getElementById('setHeightIn').value) || 0;
     const weightLb = parseFloat(document.getElementById('setWeight').value);
+    const weighInDay = parseInt(document.getElementById('setWeighInDay').value);
     const payload = {
         height: ftInToCm(ft, inches),
         weight: weightLb * KG_PER_LB,
+        weigh_in_day: weighInDay,
     };
     try {
         const res = await fetch(`${API_URL}/user/settings`, {
@@ -1371,6 +1399,24 @@ async function saveAIModel() {
             showSettingsStatus('aiModelStatus', 'Save failed', true);
         }
     } catch { showSettingsStatus('aiModelStatus', 'Error', true); }
+}
+
+async function clearFoodCache() {
+    const query = document.getElementById('cacheClearQuery').value.trim();
+    const url = `${API_URL}/cache/clear${query ? '?query=' + encodeURIComponent(query) : ''}`;
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            showSettingsStatus('cacheStatus', `✓ Cleared ${data.deleted} item(s)`);
+            document.getElementById('cacheClearQuery').value = '';
+        } else {
+            showSettingsStatus('cacheStatus', 'Failed', true);
+        }
+    } catch { showSettingsStatus('cacheStatus', 'Error', true); }
 }
 
 // ─── Macro Wizard ─────────────────────────────────────────────────────────────
@@ -1531,11 +1577,17 @@ async function applyWizardMacros() {
     document.getElementById('setFiberGoal').value   = r.fiber;
     document.getElementById('setWaterGoal').value   = r.waterCups;
 
-    // Save macros + goal together
+    // Save height, weight, goal, then macros
+    const wizFt      = parseFloat(document.getElementById('wizardFt').value) || 0;
+    const wizIn      = parseFloat(document.getElementById('wizardIn').value) || 0;
+    const wizWeightLb = parseFloat(document.getElementById('wizardWeight').value);
+    const wizPayload = { goal: wizardGoal };
+    if (wizFt || wizIn) wizPayload.height = ftInToCm(wizFt, wizIn);
+    if (wizWeightLb > 0) wizPayload.weight = wizWeightLb * KG_PER_LB;
     await fetch(`${API_URL}/user/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
-        body: JSON.stringify({ goal: wizardGoal })
+        body: JSON.stringify(wizPayload)
     });
     await saveMacroGoals();
     closeMacroWizard();
@@ -1691,4 +1743,646 @@ async function confirmDeleteMeal() {
         });
         if (res.ok) loadSavedMeals();
     } catch { alert('Failed to delete meal.'); }
+}
+
+// ─── History / Calendar ────────────────────────────────────────────────────────
+
+let historyMonth = null;          // { year, month } (month 0-indexed)
+let historyRangeData = null;      // array of day objects for current month
+let historySelectedDate = null;   // "YYYY-MM-DD"
+let historyChartDays = 7;
+
+// Grading thresholds (persisted in localStorage)
+let calGradeThresholds = (function() {
+    try {
+        const stored = localStorage.getItem('calGradeThresholds');
+        if (stored) return JSON.parse(stored);
+    } catch(e) {}
+    return { success: 10, close: 15 };
+})();
+
+function loadHistoryPage() {
+    if (!historyMonth) {
+        const now = new Date();
+        historyMonth = { year: now.getFullYear(), month: now.getMonth() };
+    }
+    updateGradingLegend();
+    fetchAndRenderCalendar();
+    loadHistoryCharts(historyChartDays);
+}
+
+async function fetchAndRenderCalendar() {
+    const { year, month } = historyMonth;
+    const monthStart = new Date(year, month, 1);
+    const monthEnd   = new Date(year, month + 1, 0);
+
+    const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const tzOffset = new Date().getTimezoneOffset();
+
+    document.getElementById('historyMonthLabel').textContent =
+        monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    try {
+        const res = await fetch(
+            `${API_URL}/food/history/range?start=${fmt(monthStart)}&end=${fmt(monthEnd)}&tz_offset=${tzOffset}`,
+            { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } }
+        );
+        const data = await res.json();
+        historyRangeData = data.days;
+        renderCalendar(historyRangeData);
+    } catch (e) {
+        console.error('Failed to load history range', e);
+    }
+}
+
+function renderCalendar(days) {
+    const grid = document.getElementById('historyCalGrid');
+    grid.innerHTML = '';
+
+    const { year, month } = historyMonth;
+    const goals = userSettings || {};
+    const todayStr = (() => {
+        const t = new Date();
+        return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+    })();
+
+    // Build lookup
+    const dayMap = {};
+    for (const d of days) dayMap[d.date] = d;
+
+    // First day of month; adjust so Mon=0
+    const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // Leading blanks
+    for (let i = 0; i < firstDow; i++) {
+        const blank = document.createElement('div');
+        blank.className = 'cal-day cal-day--blank';
+        grid.appendChild(blank);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const dayData = dayMap[dateStr];
+        const isFuture = dateStr > todayStr;
+        const isToday  = dateStr === todayStr;
+
+        const cell = document.createElement('div');
+        cell.className = 'cal-day';
+        if (isFuture) {
+            cell.classList.add('cal-day--future');
+        } else if (!dayData || dayData.calories === null) {
+            cell.classList.add('cal-day--empty');
+        } else {
+            cell.classList.add(calDayColor(dayData, goals));
+            cell.addEventListener('click', () => selectHistoryDay(dateStr));
+        }
+        if (isToday)  cell.classList.add('cal-day--today');
+        if (dateStr === historySelectedDate) cell.classList.add('cal-day--selected');
+
+        const num = document.createElement('span');
+        num.className = 'cal-day-num';
+        num.textContent = d;
+        cell.appendChild(num);
+
+        if (dayData && dayData.calories !== null && !isFuture) {
+            const cal = document.createElement('span');
+            cal.className = 'cal-day-cal';
+            cal.textContent = Math.round(dayData.calories);
+            cell.appendChild(cal);
+        }
+
+        grid.appendChild(cell);
+    }
+}
+
+function calDayColor(day, goals) {
+    if (!goals.calorie_goal) return 'cal-day--yellow';
+    const s = calGradeThresholds.success / 100;
+    const c = calGradeThresholds.close   / 100;
+    const calDev  = Math.abs(day.calories / goals.calorie_goal - 1);
+    const proOk   = !goals.protein_goal || Math.abs(day.protein / goals.protein_goal - 1) <= s;
+    const carbsOk = !goals.carbs_goal   || Math.abs(day.carbs   / goals.carbs_goal   - 1) <= s;
+    const fatOk   = !goals.fat_goal     || Math.abs(day.fat     / goals.fat_goal     - 1) <= s;
+    if (calDev <= s && proOk && carbsOk && fatOk) return 'cal-day--green';
+    if (calDev <= c) return 'cal-day--yellow';
+    return 'cal-day--red';
+}
+
+function updateGradingLegend() {
+    const s = calGradeThresholds.success;
+    const c = calGradeThresholds.close;
+    const gl = document.getElementById('legendGreenLabel');
+    const yl = document.getElementById('legendYellowLabel');
+    const rl = document.getElementById('legendRedLabel');
+    if (gl) gl.textContent = `Goals met (±${s}%)`;
+    if (yl) yl.textContent = `Close (±${s+1}–${c}%)`;
+    if (rl) rl.textContent = `Off track (>${c}%)`;
+}
+
+function openGradingModal() {
+    document.getElementById('gradeSuccessInput').value = calGradeThresholds.success;
+    document.getElementById('gradeCloseInput').value   = calGradeThresholds.close;
+    document.getElementById('gradingModal').style.display = 'flex';
+}
+
+function closeGradingModal() {
+    document.getElementById('gradingModal').style.display = 'none';
+}
+
+function closeGradingModalOutside(e) {
+    if (e.target === document.getElementById('gradingModal')) closeGradingModal();
+}
+
+function saveGradingThresholds() {
+    const s = parseInt(document.getElementById('gradeSuccessInput').value, 10);
+    const c = parseInt(document.getElementById('gradeCloseInput').value,   10);
+    if (isNaN(s) || isNaN(c) || s < 1 || c < 1) return;
+    if (s >= c) {
+        document.getElementById('gradeCloseInput').style.borderColor = '#e57373';
+        document.getElementById('gradeSuccessInput').style.borderColor = '#e57373';
+        return;
+    }
+    document.getElementById('gradeCloseInput').style.borderColor = '';
+    document.getElementById('gradeSuccessInput').style.borderColor = '';
+    calGradeThresholds = { success: s, close: c };
+    localStorage.setItem('calGradeThresholds', JSON.stringify(calGradeThresholds));
+    updateGradingLegend();
+    closeGradingModal();
+    // Re-render calendar with new thresholds
+    if (historyRangeData) renderCalendar(historyRangeData);
+}
+
+function shiftHistoryMonth(delta) {
+    let { year, month } = historyMonth;
+    month += delta;
+    if (month > 11) { month = 0; year++; }
+    if (month < 0)  { month = 11; year--; }
+    historyMonth = { year, month };
+    historySelectedDate = null;
+    document.getElementById('historyDayPanel').style.display = 'none';
+    fetchAndRenderCalendar();
+}
+
+async function selectHistoryDay(dateStr) {
+    historySelectedDate = dateStr;
+    // Re-render calendar to update selected highlight
+    if (historyRangeData) renderCalendar(historyRangeData);
+
+    const tzOffset = new Date().getTimezoneOffset();
+    try {
+        const res = await fetch(
+            `${API_URL}/food/date?date=${dateStr}&tz_offset=${tzOffset}`,
+            { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } }
+        );
+        const data = await res.json();
+        renderHistoryDayPanel(dateStr, data);
+    } catch (e) {
+        console.error('Failed to load day', e);
+    }
+}
+
+function renderHistoryDayPanel(dateStr, data) {
+    const panel = document.getElementById('historyDayPanel');
+    panel.style.display = 'block';
+
+    // Format date as MM/DD/YY
+    const [y, m, d] = dateStr.split('-');
+    const displayDate = `${m}/${d}/${y.slice(2)}`;
+    const dow = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+    document.getElementById('historyDayTitle').textContent = `${dow}, ${displayDate}`;
+
+    const cups = (data.water_ml / 240).toFixed(1);
+    document.getElementById('historyDayWater').textContent = `Water: ${cups} cups`;
+
+    const t = data.totals;
+    const goals = userSettings;
+
+    // Grade badge in header is unused (grade shown in table instead)
+    const gradeBadge = document.getElementById('historyDayGrade');
+    if (gradeBadge) gradeBadge.style.display = 'none';
+
+    // Return CSS class for a total value vs its goal
+    function cellCls(val, goal) {
+        if (!goal) return '';
+        const dev = Math.abs(val / goal - 1);
+        const s = calGradeThresholds.success / 100;
+        const c = calGradeThresholds.close / 100;
+        if (dev <= s) return ' class="hist-val-green"';
+        if (dev <= c) return ' class="hist-val-yellow"';
+        return ' class="hist-val-red"';
+    }
+
+    let html = '';
+    if (data.entries.length === 0) {
+        html = '<p class="history-no-entries">No entries logged this day.</p>';
+    } else {
+        const cg = goals?.calorie_goal, pg = goals?.protein_goal, carbg = goals?.carbs_goal, fatg = goals?.fat_goal;
+        html = `<table class="history-entries-table">
+            <thead><tr><th>Food</th><th>Cal</th><th>P</th><th>C</th><th>F</th></tr></thead>
+            <tbody>`;
+        for (const e of data.entries) {
+            html += `<tr>
+                <td>${e.food_item}</td>
+                <td>${Math.round(e.calories)}</td>
+                <td>${Math.round(e.protein)}g</td>
+                <td>${Math.round(e.carbs)}g</td>
+                <td>${Math.round(e.fat)}g</td>
+            </tr>`;
+        }
+        const gradeColor = calDayColor(t, goals);
+        const gradeText  = gradeColor === 'cal-day--green' ? '✓ Success'
+                         : gradeColor === 'cal-day--yellow' ? '~ Needs Work'
+                         : '✗ Failure';
+        const gradeCls   = gradeColor === 'cal-day--green' ? 'grade-success'
+                         : gradeColor === 'cal-day--yellow' ? 'grade-close'
+                         : 'grade-fail';
+        html += `</tbody><tfoot>
+            <tr class="history-totals-row">
+                <td>Total</td>
+                <td${cellCls(t.calories, cg)}>${Math.round(t.calories)}</td>
+                <td${cellCls(t.protein, pg)}>${Math.round(t.protein)}g</td>
+                <td${cellCls(t.carbs, carbg)}>${Math.round(t.carbs)}g</td>
+                <td${cellCls(t.fat, fatg)}>${Math.round(t.fat)}g</td>
+            </tr>
+            <tr class="history-goals-row">
+                <td>Goal</td>
+                <td>${cg ? Math.round(cg) : '—'}</td>
+                <td>${pg ? Math.round(pg) + 'g' : '—'}</td>
+                <td>${carbg ? Math.round(carbg) + 'g' : '—'}</td>
+                <td>${fatg ? Math.round(fatg) + 'g' : '—'}</td>
+            </tr>
+            <tr class="history-grade-row">
+                <td colspan="5"><span class="history-day-grade ${gradeCls}">${gradeText}</span></td>
+            </tr>
+        </tfoot></table>`;
+    }
+    document.getElementById('historyDayContent').innerHTML = html;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function exportCSV() {
+    const tzOffset = new Date().getTimezoneOffset();
+    const url = `${API_URL}/food/export/csv?tz_offset=${tzOffset}`;
+    const res = await fetch(url, { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'dockjock_food_log.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+// ─── Charts ────────────────────────────────────────────────────────────────────
+
+function toggleChart(btn) {
+    const blockId = btn.dataset.chart + 'Block';
+    const block = document.getElementById(blockId);
+    if (!block) return;
+    const isActive = btn.classList.toggle('active');
+    block.style.display = isActive ? '' : 'none';
+}
+
+async function loadHistoryCharts(days) {
+    historyChartDays = days;
+    ['chart7btn','chart30btn','chart90btn'].forEach(id => {
+        document.getElementById(id).classList.remove('active');
+    });
+    document.getElementById(`chart${days}btn`).classList.add('active');
+
+    const tzOffset = new Date().getTimezoneOffset();
+    const end   = new Date();
+    const start = new Date(); start.setDate(end.getDate() - (days - 1));
+    const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+    try {
+        const res = await fetch(
+            `${API_URL}/food/history/range?start=${fmt(start)}&end=${fmt(end)}&tz_offset=${tzOffset}`,
+            { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } }
+        );
+        const data = await res.json();
+        const dayList = data.days;
+
+        const labels  = dayList.map(d => { const [,m,day] = d.date.split('-'); return `${m}/${day}`; });
+        const cals    = dayList.map(d => d.calories ?? 0);
+        const protein = dayList.map(d => d.protein  ?? 0);
+        const carbs   = dayList.map(d => d.carbs    ?? 0);
+        const fat     = dayList.map(d => d.fat      ?? 0);
+        const fiber   = dayList.map(d => d.fiber    ?? 0);
+        const water   = dayList.map(d => (d.water_ml ?? 0) / 240);
+
+        const goals = userSettings || {};
+        drawLineChart('chartCalories', labels, [{ values: cals,    color: '#e57373' }], goals.calorie_goal);
+        drawLineChart('chartProtein',  labels, [{ values: protein, color: '#87c5f5' }], goals.protein_goal);
+        drawLineChart('chartFat',      labels, [{ values: fat,     color: '#ffb347' }], goals.fat_goal);
+        drawLineChart('chartCarbs',    labels, [{ values: carbs,   color: '#81d4c0' }], goals.carbs_goal);
+        drawLineChart('chartFiber',    labels, [{ values: fiber,   color: '#b39ddb' }], goals.fiber_goal);
+        drawLineChart('chartWater',    labels, [{ values: water,   color: '#4facfe' }], goals.water_goal ? goals.water_goal / 240 : null);
+
+        // Weight chart — separate endpoint
+        const wRes = await fetch(
+            `${API_URL}/weight/history?start=${fmt(start)}&end=${fmt(end)}&tz_offset=${tzOffset}`,
+            { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } }
+        );
+        const wData = await wRes.json();
+        // Map weight entries into same label array (null for days with no entry)
+        const weightMap = {};
+        for (const e of wData.entries) weightMap[e.date] = e.weight_lbs;
+        const weightVals = dayList.map(d => weightMap[d.date] ?? null);
+        drawLineChart('chartWeight', labels, [{ values: weightVals.map(v => v ?? 0), color: '#9575cd' }], null, true);
+
+    } catch (e) {
+        console.error('Failed to load chart data', e);
+    }
+}
+
+function drawLineChart(canvasId, labels, datasets, goalValue, skipZero = false) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth || canvas.parentElement.offsetWidth || 600;
+    const H = canvas.height;
+    canvas.width = W;
+
+    const PAD = { top: 16, right: 16, bottom: 32, left: 44 };
+    const cW = W - PAD.left - PAD.right;
+    const cH = H - PAD.top  - PAD.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    const allVals = datasets.flatMap(ds => ds.values).concat(goalValue ? [goalValue] : []);
+    const maxVal  = Math.max(...allVals, 1);
+    const step    = labels.length > 1 ? cW / (labels.length - 1) : cW;
+
+    const toX = i => PAD.left + i * step;
+    const toY = v => PAD.top + cH - (v / maxVal) * cH;
+
+    // Grid lines
+    ctx.strokeStyle = '#f0f0f0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = PAD.top + (cH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+        ctx.fillStyle = '#bbb';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(maxVal * (1 - i / 4)), PAD.left - 6, y + 4);
+    }
+
+    // Goal line
+    if (goalValue) {
+        const gy = toY(goalValue);
+        ctx.save();
+        ctx.setLineDash([5, 4]);
+        ctx.strokeStyle = '#bbb';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(PAD.left, gy); ctx.lineTo(PAD.left + cW, gy); ctx.stroke();
+        ctx.restore();
+    }
+
+    // Dataset lines
+    for (const ds of datasets) {
+        if (skipZero) {
+            // Draw line segments only between non-zero points
+            let moved = false;
+            ds.values.forEach((v, i) => {
+                if (!v) { moved = false; return; }
+                if (!moved) { ctx.beginPath(); ctx.moveTo(toX(i), toY(v)); moved = true; }
+                else ctx.lineTo(toX(i), toY(v));
+            });
+        } else {
+            ctx.beginPath();
+            ds.values.forEach((v, i) => {
+                i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v));
+            });
+        }
+        ctx.strokeStyle = ds.color;
+        ctx.lineWidth = 2.5;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        // Dots
+        ds.values.forEach((v, i) => {
+            if (!v) return;
+            ctx.beginPath();
+            ctx.arc(toX(i), toY(v), 3.5, 0, 2 * Math.PI);
+            ctx.fillStyle = ds.color;
+            ctx.fill();
+        });
+    }
+
+    // X labels (show every nth to avoid crowding)
+    const nth = Math.ceil(labels.length / 12);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    labels.forEach((lbl, i) => {
+        if (i % nth === 0 || i === labels.length - 1) {
+            ctx.fillText(lbl, toX(i), H - 8);
+        }
+    });
+}
+
+function drawStackedBarChart(canvasId, labels, datasets) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth || canvas.parentElement.offsetWidth || 600;
+    const H = canvas.height;
+    canvas.width = W;
+
+    const PAD = { top: 16, right: 16, bottom: 32, left: 44 };
+    const cW = W - PAD.left - PAD.right;
+    const cH = H - PAD.top  - PAD.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    const n = labels.length;
+    const barW  = Math.max(4, (cW / n) * 0.6);
+    const gap   = cW / n;
+
+    // Max stacked value
+    let maxVal = 1;
+    for (let i = 0; i < n; i++) {
+        const total = datasets.reduce((s, ds) => s + (ds.values[i] ?? 0), 0);
+        if (total > maxVal) maxVal = total;
+    }
+
+    const toY = v => PAD.top + cH - (v / maxVal) * cH;
+
+    // Grid lines
+    ctx.strokeStyle = '#f0f0f0';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = PAD.top + (cH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+        ctx.fillStyle = '#bbb';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(maxVal * (1 - i / 4)), PAD.left - 6, y + 4);
+    }
+
+    // Bars
+    for (let i = 0; i < n; i++) {
+        const x = PAD.left + i * gap + gap / 2 - barW / 2;
+        let base = PAD.top + cH;
+        for (const ds of datasets) {
+            const v = ds.values[i] ?? 0;
+            if (v <= 0) continue;
+            const bH = (v / maxVal) * cH;
+            ctx.fillStyle = ds.color;
+            ctx.fillRect(x, base - bH, barW, bH);
+            base -= bH;
+        }
+    }
+
+    // X labels
+    const nth = Math.ceil(n / 12);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    labels.forEach((lbl, i) => {
+        if (i % nth === 0 || i === n - 1) {
+            ctx.fillText(lbl, PAD.left + i * gap + gap / 2, H - 8);
+        }
+    });
+}
+
+// ─── Weigh-In Reminder ────────────────────────────────────────────────────────
+
+async function checkWeighInReminder() {
+    if (!userSettings) return;
+    // JS getDay(): 0=Sun,1=Mon,...6=Sat. weigh_in_day: 0=Mon,...6=Sun
+    const jsDay = new Date().getDay();
+    const localDay = jsDay === 0 ? 6 : jsDay - 1; // convert to Mon=0
+    if (localDay !== (userSettings.weigh_in_day ?? 0)) return;
+
+    // Check if weight already logged today
+    const tzOffset = new Date().getTimezoneOffset();
+    try {
+        const res = await fetch(`${API_URL}/weight/today?tz_offset=${tzOffset}`, {
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        const data = await res.json();
+        if (!data.logged_today) {
+            document.getElementById('weighInModal').style.display = 'flex';
+            // Also fire browser notification if enabled
+            const prefs = JSON.parse(localStorage.getItem('notifPrefs') || '{}');
+            if (prefs.weighIn && Notification.permission === 'granted') {
+                new Notification('DockJock', { body: 'Time to log your weight!' });
+            }
+        }
+    } catch (e) {
+        console.error('Weight reminder check failed', e);
+    }
+}
+
+function closeWeighInModal() {
+    document.getElementById('weighInModal').style.display = 'none';
+    document.getElementById('weighInInput').value = '';
+}
+
+async function submitWeighIn() {
+    const val = parseFloat(document.getElementById('weighInInput').value);
+    if (!val || val < 50 || val > 700) return;
+    const tzOffset = new Date().getTimezoneOffset();
+    try {
+        await fetch(`${API_URL}/weight/log?tz_offset=${tzOffset}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify({ weight_lbs: val })
+        });
+        closeWeighInModal();
+        await loadUserSettings();  // refresh profile weight display
+    } catch (e) {
+        console.error('Weight log failed', e);
+    }
+}
+
+// ─── Midnight Auto-Reset ──────────────────────────────────────────────────────
+
+let _midnightWatcherStarted = false;
+let _lastLoadedDate = null;
+
+function startMidnightWatcher() {
+    if (_midnightWatcherStarted) return;
+    _midnightWatcherStarted = true;
+    _lastLoadedDate = new Date().toLocaleDateString('en-CA');
+    setInterval(() => {
+        const today = new Date().toLocaleDateString('en-CA');
+        if (today !== _lastLoadedDate) {
+            _lastLoadedDate = today;
+            loadTodayData();
+            drawProgressRings();
+        }
+    }, 60_000);
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+let _notifWatcherStarted = false;
+let _lastNotifDate = null;
+
+function startNotifWatcher() {
+    if (_notifWatcherStarted) return;
+    _notifWatcherStarted = true;
+    setInterval(() => {
+        const prefs = JSON.parse(localStorage.getItem('notifPrefs') || '{}');
+        if (!prefs.dailySummary || Notification.permission !== 'granted') return;
+        const now = new Date();
+        const [h, m] = (prefs.summaryTime || '20:00').split(':').map(Number);
+        const today = now.toLocaleDateString('en-CA');
+        if (now.getHours() === h && now.getMinutes() === m && _lastNotifDate !== today) {
+            _lastNotifDate = today;
+            new Notification('DockJock', { body: "Time to review today's nutrition!" });
+        }
+    }, 60_000);
+}
+
+function requestNotifPermission() {
+    if (!('Notification' in window)) return;
+    Notification.requestPermission().then(() => updateNotifPermStatus());
+}
+
+function updateNotifPermStatus() {
+    if (!('Notification' in window)) {
+        const s = document.getElementById('notifPermStatus');
+        if (s) s.textContent = 'Not supported in this browser';
+        return;
+    }
+    const btn = document.getElementById('notifPermBtn');
+    const status = document.getElementById('notifPermStatus');
+    const p = Notification.permission;
+    if (p === 'granted') {
+        if (btn) btn.style.display = 'none';
+        if (status) { status.textContent = '✓ Enabled'; status.style.color = '#81c784'; }
+    } else if (p === 'denied') {
+        if (btn) btn.style.display = 'none';
+        if (status) { status.textContent = 'Blocked — allow in browser settings'; status.style.color = '#e57373'; }
+    } else {
+        if (btn) btn.style.display = '';
+        if (status) status.textContent = '';
+    }
+}
+
+function saveNotifPrefs() {
+    const prefs = {
+        weighIn: document.getElementById('notifWeighIn').checked,
+        dailySummary: document.getElementById('notifDailySummary').checked,
+        summaryTime: document.getElementById('notifSummaryTime').value || '20:00'
+    };
+    localStorage.setItem('notifPrefs', JSON.stringify(prefs));
+    showSettingsStatus('notifStatus', '✓ Saved');
+}
+
+function loadNotifPrefs() {
+    const prefs = JSON.parse(localStorage.getItem('notifPrefs') || '{}');
+    const wi = document.getElementById('notifWeighIn');
+    const ds = document.getElementById('notifDailySummary');
+    const st = document.getElementById('notifSummaryTime');
+    if (wi) wi.checked = prefs.weighIn || false;
+    if (ds) ds.checked = prefs.dailySummary || false;
+    if (st) st.value = prefs.summaryTime || '20:00';
+    updateNotifPermStatus();
 }

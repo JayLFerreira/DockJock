@@ -8,7 +8,7 @@ from typing import Optional
 import os
 import json
 
-from database import init_db, get_db, User, FoodEntry, CachedFood, WaterEntry, SavedMeal
+from database import init_db, get_db, User, FoodEntry, CachedFood, WaterEntry, SavedMeal, WeightEntry
 from openai_service import parse_food_items
 
 app = FastAPI(title="DockJock API")
@@ -49,6 +49,7 @@ class UserSettings(BaseModel):
     openai_model: Optional[str] = None
     name: Optional[str] = None
     goal: Optional[str] = None
+    weigh_in_day: Optional[int] = None
 
 class AddFoodRequest(BaseModel):
     food_text: str
@@ -127,7 +128,8 @@ async def get_settings(user: User = Depends(verify_password)):
         "fat_goal": user.fat_goal,
         "fiber_goal": user.fiber_goal,
         "water_goal": user.water_goal,
-        "openai_model": user.openai_model
+        "openai_model": user.openai_model,
+        "weigh_in_day": user.weigh_in_day if user.weigh_in_day is not None else 0
     }
 
 @app.put("/api/user/settings")
@@ -140,6 +142,19 @@ async def update_settings(
         user.height = settings.height
     if settings.weight is not None:
         user.weight = settings.weight
+        # Also log a weight entry for today (upsert: replace if already logged today)
+        from datetime import datetime, timedelta
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end   = today_start + timedelta(days=1)
+        existing_w  = db.query(WeightEntry).filter(
+            WeightEntry.user_id == user.id,
+            WeightEntry.date >= today_start,
+            WeightEntry.date < today_end
+        ).first()
+        if existing_w:
+            existing_w.weight_kg = settings.weight
+        else:
+            db.add(WeightEntry(user_id=user.id, weight_kg=settings.weight))
     if settings.calorie_goal is not None:
         user.calorie_goal = settings.calorie_goal
     if settings.protein_goal is not None:
@@ -158,6 +173,8 @@ async def update_settings(
         user.name = settings.name
     if settings.goal is not None:
         user.goal = settings.goal
+    if settings.weigh_in_day is not None:
+        user.weigh_in_day = settings.weigh_in_day
 
     db.commit()
     return {"success": True, "message": "Settings updated"}
@@ -362,6 +379,173 @@ async def get_week_entries(
     }
 
 
+@app.get("/api/food/date")
+async def get_entries_by_date(
+    date: str,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Get food + water for a specific local date. date = YYYY-MM-DD."""
+    from datetime import datetime, timedelta
+
+    local_date = datetime.strptime(date, "%Y-%m-%d")
+    day_start_utc = local_date + timedelta(minutes=tz_offset)
+    day_end_utc   = day_start_utc + timedelta(days=1)
+
+    entries = db.query(FoodEntry).filter(
+        FoodEntry.user_id == user.id,
+        FoodEntry.date >= day_start_utc,
+        FoodEntry.date < day_end_utc
+    ).order_by(FoodEntry.date.asc()).all()
+
+    water_entries = db.query(WaterEntry).filter(
+        WaterEntry.user_id == user.id,
+        WaterEntry.date >= day_start_utc,
+        WaterEntry.date < day_end_utc
+    ).all()
+    water_total = max(0, sum(e.amount for e in water_entries))
+
+    totals = {
+        "calories": sum(e.calories for e in entries),
+        "protein":  sum(e.protein  for e in entries),
+        "carbs":    sum(e.carbs    for e in entries),
+        "fat":      sum(e.fat      for e in entries),
+        "fiber":    sum(e.fiber    for e in entries),
+    }
+
+    return {
+        "entries": [
+            {
+                "id":        e.id,
+                "meal_type": e.meal_type,
+                "food_item": e.food_item,
+                "quantity":  e.quantity,
+                "unit":      e.unit,
+                "calories":  e.calories,
+                "protein":   e.protein,
+                "carbs":     e.carbs,
+                "fat":       e.fat,
+                "fiber":     e.fiber,
+                "time":      e.date.isoformat()
+            } for e in entries
+        ],
+        "totals": totals,
+        "water_ml": water_total
+    }
+
+
+@app.get("/api/food/history/range")
+async def get_history_range(
+    start: str,
+    end: str,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Get per-day macro summaries for a date range. start/end = YYYY-MM-DD."""
+    from datetime import datetime, timedelta
+
+    start_date = datetime.strptime(start, "%Y-%m-%d")
+    end_date   = datetime.strptime(end,   "%Y-%m-%d")
+
+    range_start_utc = start_date + timedelta(minutes=tz_offset)
+    range_end_utc   = end_date   + timedelta(days=1, minutes=tz_offset)
+
+    entries = db.query(FoodEntry).filter(
+        FoodEntry.user_id == user.id,
+        FoodEntry.date >= range_start_utc,
+        FoodEntry.date < range_end_utc
+    ).order_by(FoodEntry.date.asc()).all()
+
+    water_entries = db.query(WaterEntry).filter(
+        WaterEntry.user_id == user.id,
+        WaterEntry.date >= range_start_utc,
+        WaterEntry.date < range_end_utc
+    ).all()
+
+    # Group food by local date
+    days_food = {}
+    for e in entries:
+        local_dt = e.date - timedelta(minutes=tz_offset)
+        day_str  = local_dt.strftime("%Y-%m-%d")
+        if day_str not in days_food:
+            days_food[day_str] = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0}
+        d = days_food[day_str]
+        d["calories"] += e.calories
+        d["protein"]  += e.protein
+        d["carbs"]    += e.carbs
+        d["fat"]      += e.fat
+        d["fiber"]    += e.fiber
+
+    # Group water by local date
+    days_water = {}
+    for e in water_entries:
+        local_dt = e.date - timedelta(minutes=tz_offset)
+        day_str  = local_dt.strftime("%Y-%m-%d")
+        days_water[day_str] = days_water.get(day_str, 0) + e.amount
+
+    # Build result for every day in range
+    results = []
+    current = start_date
+    while current <= end_date:
+        day_str = current.strftime("%Y-%m-%d")
+        food = days_food.get(day_str, None)
+        results.append({
+            "date":     day_str,
+            "calories": round(food["calories"]) if food else None,
+            "protein":  round(food["protein"],  1) if food else None,
+            "carbs":    round(food["carbs"],     1) if food else None,
+            "fat":      round(food["fat"],       1) if food else None,
+            "fiber":    round(food["fiber"],     1) if food else None,
+            "water_ml": max(0, days_water.get(day_str, 0))
+        })
+        current += timedelta(days=1)
+
+    return {"days": results}
+
+
+@app.get("/api/food/export/csv")
+async def export_csv(
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Export all food entries as CSV."""
+    from datetime import timedelta
+    from fastapi.responses import StreamingResponse
+    import io, csv
+
+    entries = db.query(FoodEntry).filter(
+        FoodEntry.user_id == user.id
+    ).order_by(FoodEntry.date.asc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Meal", "Food", "Qty", "Unit", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"])
+    for e in entries:
+        local_dt = e.date - timedelta(minutes=tz_offset)
+        writer.writerow([
+            local_dt.strftime("%m/%d/%y"),
+            e.meal_type or "",
+            e.food_item,
+            e.quantity,
+            e.unit or "",
+            round(e.calories),
+            round(e.protein, 1),
+            round(e.carbs,   1),
+            round(e.fat,     1),
+            round(e.fiber,   1)
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=dockjock_food_log.csv"}
+    )
+
+
 class MicroAnalysisRequest(BaseModel):
     period: str
     days: int
@@ -515,6 +699,23 @@ async def delete_food_entry(
     
     return {"success": True, "message": "Entry deleted"}
 
+@app.post("/api/cache/clear")
+async def clear_food_cache(
+    query: str = "",
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    """Delete cached food entries matching a search string (or all if query is empty)."""
+    q = db.query(CachedFood)
+    if query:
+        q = q.filter(CachedFood.food_name.ilike(f"%{query}%"))
+    entries = q.all()
+    for e in entries:
+        db.delete(e)
+    db.commit()
+    return {"deleted": len(entries)}
+
+
 # Water tracking
 @app.post("/api/water/add")
 async def add_water(
@@ -555,6 +756,75 @@ async def get_today_water(
     total = max(0, sum(e.amount for e in entries))
 
     return {"total": total}
+
+
+# Weight Tracking
+
+class WeightLogRequest(BaseModel):
+    weight_lbs: float
+
+@app.post("/api/weight/log")
+async def log_weight(
+    request: WeightLogRequest,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Log a weight entry. Also updates user.weight (current weight)."""
+    from datetime import timedelta
+    weight_kg = request.weight_lbs / 2.20462
+    entry = WeightEntry(user_id=user.id, weight_kg=weight_kg)
+    db.add(entry)
+    user.weight = weight_kg
+    db.commit()
+    return {"success": True}
+
+@app.get("/api/weight/history")
+async def get_weight_history(
+    start: str,
+    end: str,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Get weight entries for a date range. start/end = YYYY-MM-DD."""
+    from datetime import datetime, timedelta
+    start_dt = datetime.strptime(start, "%Y-%m-%d") + timedelta(minutes=tz_offset)
+    end_dt   = datetime.strptime(end,   "%Y-%m-%d") + timedelta(days=1, minutes=tz_offset)
+
+    entries = db.query(WeightEntry).filter(
+        WeightEntry.user_id == user.id,
+        WeightEntry.date >= start_dt,
+        WeightEntry.date < end_dt
+    ).order_by(WeightEntry.date.asc()).all()
+
+    # One entry per day (last entry of each day)
+    by_day = {}
+    for e in entries:
+        local_dt = e.date - timedelta(minutes=tz_offset)
+        day_str  = local_dt.strftime("%Y-%m-%d")
+        by_day[day_str] = round(e.weight_kg * 2.20462, 1)  # return as lbs
+
+    return {"entries": [{"date": k, "weight_lbs": v} for k, v in sorted(by_day.items())]}
+
+@app.get("/api/weight/today")
+async def get_today_weight(
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Check if a weight entry exists for today."""
+    from datetime import datetime, timedelta
+    local_now = datetime.utcnow() - timedelta(minutes=tz_offset)
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(minutes=tz_offset)
+    day_end   = day_start + timedelta(days=1)
+    entry = db.query(WeightEntry).filter(
+        WeightEntry.user_id == user.id,
+        WeightEntry.date >= day_start,
+        WeightEntry.date < day_end
+    ).first()
+    return {"logged_today": entry is not None}
+
 
 # Saved Meals
 @app.post("/api/meals/save")

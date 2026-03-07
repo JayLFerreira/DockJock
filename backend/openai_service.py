@@ -7,13 +7,16 @@ from datetime import datetime
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-SYSTEM_PROMPT = """You are a nutrition analysis assistant for DockJock, a macro tracking app. Parse food entries and return detailed nutritional information.
+SYSTEM_PROMPT = """You are a nutrition analysis assistant for DockJock, a macro tracking app. Parse food entries and return the TOTAL nutrition for the EXACT amount described.
 
 INPUT FORMAT:
 You receive food items, one per line:
 - "2 eggs"
 - "1 cup cooked white rice"
 - "6 oz grilled chicken breast"
+- "0.5 lb mushrooms"
+- "1 lb 95% fat free ground beef"
+- "Chick-fil-A 30-count Grilled Nuggets"
 
 OUTPUT FORMAT:
 Return ONLY valid JSON. No markdown blocks, no explanations, no preamble. Just raw JSON.
@@ -22,53 +25,41 @@ Structure:
 {
   "items": [
     {
-      "original_input": "2 eggs",
-      "quantity": 2,
-      "unit": "egg",
-      "food_name": "egg",
-      "per_unit_nutrition": {
-        "calories": 70,
-        "protein": 6,
-        "carbs": 0.5,
-        "fat": 5,
-        "fiber": 0,
-        "sugar": 0.4,
-        "saturated_fat": 1.6,
-        "micros": {
-          "vitamin_a_mcg": 80,
-          "vitamin_c_mg": 0,
-          "vitamin_d_mcg": 1.1,
-          "vitamin_e_mg": 0.5,
-          "vitamin_k_mcg": 0.3,
-          "vitamin_b1_thiamin_mg": 0.04,
-          "vitamin_b2_riboflavin_mg": 0.2,
-          "vitamin_b3_niacin_mg": 0.04,
-          "vitamin_b6_mg": 0.07,
-          "vitamin_b12_mcg": 0.6,
-          "folate_mcg": 24,
-          "choline_mg": 147,
-          "calcium_mg": 28,
-          "iron_mg": 0.9,
-          "magnesium_mg": 6,
-          "phosphorus_mg": 99,
-          "potassium_mg": 69,
-          "sodium_mg": 70,
-          "zinc_mg": 0.6,
-          "copper_mg": 0.04,
-          "manganese_mg": 0.01,
-          "selenium_mcg": 15.4
-        }
-      },
+      "original_input": "6 oz grilled chicken breast",
+      "quantity": 6,
+      "unit": "oz",
+      "food_name": "grilled chicken breast",
       "total_nutrition": {
-        "calories": 140,
-        "protein": 12,
-        "carbs": 1,
-        "fat": 10,
+        "calories": 187,
+        "protein": 35,
+        "carbs": 0,
+        "fat": 4,
         "fiber": 0,
-        "sugar": 0.8,
-        "saturated_fat": 3.2,
+        "sugar": 0,
+        "saturated_fat": 1,
         "micros": {
-          (all micros × quantity)
+          "vitamin_a_mcg": 6,
+          "vitamin_c_mg": 0,
+          "vitamin_d_mcg": 0.1,
+          "vitamin_e_mg": 0.3,
+          "vitamin_k_mcg": 0.3,
+          "vitamin_b1_thiamin_mg": 0.1,
+          "vitamin_b2_riboflavin_mg": 0.15,
+          "vitamin_b3_niacin_mg": 14,
+          "vitamin_b6_mg": 0.9,
+          "vitamin_b12_mcg": 0.3,
+          "folate_mcg": 6,
+          "choline_mg": 100,
+          "calcium_mg": 15,
+          "iron_mg": 1.0,
+          "magnesium_mg": 27,
+          "phosphorus_mg": 260,
+          "potassium_mg": 470,
+          "sodium_mg": 75,
+          "zinc_mg": 1.0,
+          "copper_mg": 0.06,
+          "manganese_mg": 0.02,
+          "selenium_mcg": 27
         }
       }
     }
@@ -76,31 +67,57 @@ Structure:
 }
 
 RULES:
-1. Extract quantity (default 1 if missing)
-2. Singular units: "egg" not "eggs"
-3. Units: egg, slice, cup, tbsp, tsp, oz, lb, g, ml, piece
-4. Use USDA FoodData Central data
-5. per_unit_nutrition = 1 unit nutrition
-6. total_nutrition = per_unit × quantity
-7. Include ALL micronutrients available
-8. If micro = 0, still include it as 0
-9. Fractions: "1/2 cup" → 0.5
-10. Return ONLY JSON - no markdown, no text
-11. Cooked vs raw matters - respect the description
-12. Be precise with measurements"""
+1. Extract quantity (default 1 if missing). Fractions: "1/2 cup" → quantity=0.5
+2. Singular units: "egg" not "eggs", "nugget" not "nuggets"
+3. Units: egg, slice, cup, tbsp, tsp, oz, lb, g, ml, piece, nugget, wing, strip, patty, scoop, serving
+4. total_nutrition = the TOTAL nutrition for the EXACT amount described. NOT per-unit, NOT per-100g, NOT per serving size label.
+5. For chain restaurants (Chick-fil-A, McDonald's, Chipotle, Subway, etc.) use the restaurant's OFFICIAL published nutrition facts — not estimates.
+6. "X-count" means quantity=X pieces. Example: "30-count Grilled Nuggets" → total_nutrition = nutrition for all 30 nuggets combined.
+7. WEIGHT UNIT EXAMPLES — follow these exactly:
+   - "6 oz grilled chicken breast" → total_nutrition for 6 oz of chicken (~187 cal, 35g protein)
+   - "0.5 lb mushrooms" → total_nutrition for half a pound of mushrooms (~49 cal, 6g protein)
+   - "1 lb 95% fat free ground beef" → total_nutrition for a full pound (~560 cal, 97g protein, 16g fat)
+   - "200g salmon" → total_nutrition for 200 grams of salmon (~415 cal, 41g protein)
+8. REFERENCE TOTALS for common inputs:
+   - 1 lb chicken breast (boneless skinless): ~490 cal, 92g protein, 0 carbs, 11g fat
+   - 1 lb chicken thigh (boneless skinless): ~700 cal, 85g protein, 0 carbs, 40g fat
+   - 1 lb ground beef 90/10: ~870 cal, 95g protein, 0 carbs, 50g fat
+   - 1 lb ground beef 95/5 (95% lean): ~560 cal, 97g protein, 0 carbs, 16g fat
+   - 1 lb ground beef 80/20: ~1150 cal, 82g protein, 0 carbs, 91g fat
+   - 1 lb salmon: ~920 cal, 92g protein, 0 carbs, 59g fat
+   - 1 lb raw mushrooms: ~97 cal, 13g protein, 14g carbs, 1.5g fat
+   - 1 lb raw tomatoes: ~82 cal, 4g protein, 18g carbs, 0.9g fat
+   - 6 oz grilled chicken breast: ~187 cal, 35g protein, 0 carbs, 4g fat
+   - 2 large eggs: ~140 cal, 12g protein, 1g carbs, 10g fat
+9. Include ALL micronutrients listed in the example. If micro = 0, still include it as 0.
+10. Cooked vs raw matters — respect the description.
+11. For lean ground beef (e.g. "95% fat free" or "95/5"): fat = ~16g per lb, calories = ~560 per lb.
+12. Return ONLY JSON - no markdown, no text."""
 
-def check_cache(food_name: str, db: Session):
-    """Check if food is in cache"""
-    cached = db.query(CachedFood).filter(CachedFood.food_name == food_name.lower()).first()
-    return cached
+# Units where the cache key must include the unit (different units = different nutrition per-unit)
+UNIT_SENSITIVE = {'oz', 'lb', 'g', 'ml', 'cup', 'cups', 'tbsp', 'tsp'}
+
+def _cache_key(food_name: str, unit: str) -> str:
+    """Build cache key. For weight/volume units, include unit to prevent cross-unit collisions."""
+    name = food_name.lower().strip()
+    u = (unit or '').lower().strip()
+    if u in UNIT_SENSITIVE:
+        return f"{name}|{u}"
+    return name
+
+def check_cache(food_name: str, unit: str, db: Session):
+    """Check if food+unit combo is in cache"""
+    key = _cache_key(food_name, unit)
+    return db.query(CachedFood).filter(CachedFood.food_name == key).first()
 
 def add_to_cache(food_name: str, unit: str, nutrition_data: dict, db: Session):
-    """Add food to cache, skip if already exists"""
-    existing = db.query(CachedFood).filter(CachedFood.food_name == food_name.lower()).first()
+    """Add food to cache with unit-aware key (stores per-unit nutrition), skip if already exists"""
+    key = _cache_key(food_name, unit)
+    existing = db.query(CachedFood).filter(CachedFood.food_name == key).first()
     if existing:
         return existing
     cached = CachedFood(
-        food_name=food_name.lower(),
+        food_name=key,
         unit=unit,
         nutrition_json=json.dumps(nutrition_data)
     )
@@ -108,55 +125,66 @@ def add_to_cache(food_name: str, unit: str, nutrition_data: dict, db: Session):
     db.commit()
     return cached
 
+def _derive_per_unit(total_nutrition: dict, quantity: float) -> dict:
+    """Divide total_nutrition by quantity to get per-unit values."""
+    if quantity <= 0:
+        quantity = 1.0
+    per_unit = {}
+    for k, v in total_nutrition.items():
+        if k == "micros":
+            per_unit["micros"] = {mk: mv / quantity for mk, mv in v.items()}
+        elif isinstance(v, (int, float)):
+            per_unit[k] = v / quantity
+        else:
+            per_unit[k] = v
+    return per_unit
+
 def parse_food_items(food_text: str, db: Session):
     """
-    Parse food items using OpenAI API with smart caching
-    Returns list of parsed items with nutrition data
+    Parse food items using OpenAI API with smart caching.
+    AI returns total_nutrition for the exact amount; per_unit is derived by dividing by quantity.
+    Cache stores per-unit values. Cache keys are unit-aware: "mushroom|lb" and "mushroom|piece" are separate.
     """
     lines = [line.strip() for line in food_text.strip().split('\n') if line.strip()]
-    
-    # Check cache first for each line
+
     results = []
     uncached_lines = []
-    line_to_index = {}
-    
+
+    common_units = ['cup', 'cups', 'tbsp', 'tsp', 'oz', 'lb', 'g', 'ml',
+                    'slice', 'slices', 'piece', 'pieces', 'nugget', 'nuggets',
+                    'wing', 'wings', 'strip', 'strips', 'patty', 'scoop', 'serving']
+
     for idx, line in enumerate(lines):
-        # Try to extract food name for cache lookup
-        # Simple heuristic: remove numbers and common units from start
         words = line.lower().split()
-        potential_food_name = None
-        
-        # Skip first word if it's a number or fraction
+
+        # Extract quantity from first word
+        extracted_quantity = 1.0
         start_idx = 0
         if words and (words[0].replace('.', '').replace('/', '').isdigit() or '/' in words[0]):
             start_idx = 1
-        
-        # Skip second word if it's a common unit
-        common_units = ['cup', 'cups', 'tbsp', 'tsp', 'oz', 'lb', 'g', 'ml', 'slice', 'slices', 'piece', 'pieces']
+            try:
+                if '/' in words[0]:
+                    parts = words[0].split('/')
+                    extracted_quantity = float(parts[0]) / float(parts[1])
+                else:
+                    extracted_quantity = float(words[0])
+            except:
+                extracted_quantity = 1.0
+
+        # Extract unit from next word if it's a known unit
+        extracted_unit = None
         if len(words) > start_idx and words[start_idx] in common_units:
+            extracted_unit = words[start_idx]
             start_idx += 1
-        
+
         if len(words) > start_idx:
             potential_food_name = ' '.join(words[start_idx:])
-            cached = check_cache(potential_food_name, db)
-            
+            cached = check_cache(potential_food_name, extracted_unit or '', db)
+
             if cached:
-                # Found in cache! Calculate total based on quantity in original input
-                cached_nutrition = json.loads(cached.nutrition_json)
-                
-                # Extract quantity from original line
-                quantity = 1.0
-                first_word = words[0] if words else "1"
-                try:
-                    if '/' in first_word:
-                        parts = first_word.split('/')
-                        quantity = float(parts[0]) / float(parts[1])
-                    else:
-                        quantity = float(first_word)
-                except:
-                    quantity = 1.0
-                
-                # Calculate total nutrition
+                cached_nutrition = json.loads(cached.nutrition_json)  # per-unit values
+                quantity = extracted_quantity
+
                 total_nutrition = {
                     "calories": cached_nutrition["calories"] * quantity,
                     "protein": cached_nutrition["protein"] * quantity,
@@ -167,31 +195,27 @@ def parse_food_items(food_text: str, db: Session):
                     "saturated_fat": cached_nutrition.get("saturated_fat", 0) * quantity,
                     "micros": {}
                 }
-                
-                # Multiply micros
+
                 if "micros" in cached_nutrition:
                     for key, value in cached_nutrition["micros"].items():
                         total_nutrition["micros"][key] = value * quantity
-                
+
                 results.append({
                     "original_input": line,
                     "quantity": quantity,
-                    "unit": cached.unit,
-                    "food_name": cached.food_name,
+                    "unit": extracted_unit or cached.unit,
+                    "food_name": potential_food_name,
                     "per_unit_nutrition": cached_nutrition,
                     "total_nutrition": total_nutrition,
                     "from_cache": True
                 })
                 continue
-        
-        # Not in cache, need to query OpenAI
+
         uncached_lines.append(line)
-        line_to_index[line] = idx
-    
-    # Query OpenAI for uncached items
+
     if uncached_lines:
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        
+
         try:
             response = client.chat.completions.create(
                 model=model,
@@ -200,26 +224,27 @@ def parse_food_items(food_text: str, db: Session):
                     {"role": "user", "content": "\n".join(uncached_lines)}
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.3
+                temperature=0.1
             )
-            
+
             content = response.choices[0].message.content
             parsed_data = json.loads(content)
-            
-            # Add to cache and results
+
             for item in parsed_data.get("items", []):
-                # Cache the per-unit nutrition
-                add_to_cache(
-                    item["food_name"],
-                    item["unit"],
-                    item["per_unit_nutrition"],
-                    db
-                )
-                
+                quantity = item.get("quantity", 1) or 1
+                total = item["total_nutrition"]
+
+                # Derive per-unit by dividing total by quantity — no AI math required
+                per_unit = _derive_per_unit(total, quantity)
+
+                # Cache the per-unit values
+                add_to_cache(item["food_name"], item["unit"], per_unit, db)
+
+                item["per_unit_nutrition"] = per_unit
                 item["from_cache"] = False
                 results.append(item)
-        
+
         except Exception as e:
             raise Exception(f"OpenAI API error: {str(e)}")
-    
+
     return results

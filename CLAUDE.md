@@ -7,11 +7,11 @@ Deployed via Docker on Windows, accessible at `http://dockjock:8080` or `http://
 ## Deployment
 After any code change, rebuild with:
 ```
-dbuild
+/dbuild
 ```
-(PowerShell alias defined in `$PROFILE` — runs `docker-compose down && docker-compose up -d --build`)
+This is a Claude Code skill (`.claude/skills/dbuild/`) that runs `docker-compose down && docker-compose up -d --build`, then tails logs to confirm clean startup.
 
-To restart without rebuilding: `drestart`
+To restart without rebuilding: `drestart` (PowerShell alias in `$PROFILE`)
 
 ## Rules
 
@@ -41,6 +41,7 @@ macro-tracker/
 │   ├── app.js            # All frontend logic (vanilla JS)
 │   ├── styles.css        # All styles
 │   └── nginx.conf        # Reverse proxy to backend
+├── .claude/skills/dbuild/ # /dbuild Claude Code skill
 ├── data/                 # SQLite volume (dockjock.db) — never delete
 ├── docker-compose.yml
 └── .env                  # OPENAI_API_KEY, ADMIN_PASSWORD, PORT — never commit
@@ -60,19 +61,34 @@ Never recreate tables or use `Base.metadata.drop_all()`.
 - `userSettings` global — holds all user prefs, reloaded after any settings save
 - Progress rings drawn on canvas via `drawProgressRings()`
 - Units: height stored as cm (displayed as ft/in), weight as kg (displayed as lbs), water as ml (displayed as cups, 1 cup = 240ml)
+- Dark mode: `data-theme="dark"` on `<body>`, toggled via `toggleTheme()`, persisted in `localStorage.theme`
+- Midnight watcher: `startMidnightWatcher()` checks date every 60s, calls `loadTodayData()` on rollover
+- Notifications: `localStorage.notifPrefs` `{ weighIn, dailySummary, summaryTime }` — browser Notification API
+
+### OpenAI Food Parsing (`openai_service.py`)
+- AI is asked for `total_nutrition` only (exact totals for the amount typed, not per-unit)
+- Backend derives `per_unit = total / quantity` in Python (`_derive_per_unit()`) — avoids AI math errors
+- Food cache key: `food_name|unit` for weight/volume units (unit-sensitive set `UNIT_SENSITIVE`)
+- Cache stores per-unit values; lookup multiplies by quantity at query time
 
 ### API Conventions
 - All protected routes use `Authorization: Basic btoa(':' + authPassword)` header
 - `PUT /api/user/settings` accepts partial payload (all fields Optional)
 - Food entries: `source_meal` field shows which saved meal an entry came from (null if typed directly)
+- `GET /api/food/week` — returns entries + `days` count for weekly micros view
+- `GET /api/food/export/csv` — full history export
+- `GET /api/weight/today` / `POST /api/weight/log` — weigh-in tracking
+
+### Micronutrients Page
+- 22 micros tracked, grouped Vitamins / Minerals
+- Row layout: `Label | Bar (capped 42% width) | % of RDA | Amount / Goal`
+- Color: green ≥90%, orange ≥30%, red <30% (reversed for sodium upper-limit)
+- `microsCurrentTotals` global holds aggregated values for AI analysis
 
 ## Phase Status
 - Phase 1: Login, UI, Docker ✅
 - Phase 2: OpenAI food parsing, food log, water tracking, saved meals ✅
 - Phase 3: Settings page, profile card, Macro Wizard, Meal Builder ✅
-- Phase 4: Manual food entry form, micronutrients page + RDA tracking ⬜
-- Phase 5: History/calendar, daily summaries, CSV export, charts ⬜
-- Phase 6: Polish — midnight reset, notifications, mobile, dark mode ⬜
-
-## Known Stubs
-- `addManualBtn` — fires `alert('Manual entry feature coming soon!')` (Phase 4 work)
+- Phase 4: Manual food entry modal, micronutrients page + RDA tracking ✅
+- Phase 5: History/calendar, daily summaries, CSV export, charts ✅
+- Phase 6: Dark mode, midnight reset, browser notifications ✅ — mobile/responsive ⬜

@@ -1753,13 +1753,30 @@ let historySelectedDate = null;   // "YYYY-MM-DD"
 let historyChartDays = 7;
 
 // Grading thresholds (persisted in localStorage)
+const _defaultMacros = () => ({
+    calories: { enabled: true, direction: 'within' },
+    protein:  { enabled: true, direction: 'within' },
+    carbs:    { enabled: true, direction: 'within' },
+    fat:      { enabled: true, direction: 'within' }
+});
 let calGradeThresholds = (function() {
     try {
         const stored = localStorage.getItem('calGradeThresholds');
-        if (stored) return JSON.parse(stored);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (!parsed.macros) parsed.macros = _defaultMacros();
+            return parsed;
+        }
     } catch(e) {}
-    return { success: 10, close: 15 };
+    return { success: 10, close: 15, macros: _defaultMacros() };
 })();
+
+function macroPasses(val, goal, direction, threshold) {
+    if (!goal) return true;
+    if (direction === 'under') return val <= goal;
+    if (direction === 'over')  return val >= goal;
+    return Math.abs(val / goal - 1) <= threshold;
+}
 
 function loadHistoryPage() {
     if (!historyMonth) {
@@ -1860,12 +1877,14 @@ function calDayColor(day, goals) {
     if (!goals.calorie_goal) return 'cal-day--yellow';
     const s = calGradeThresholds.success / 100;
     const c = calGradeThresholds.close   / 100;
-    const calDev  = Math.abs(day.calories / goals.calorie_goal - 1);
-    const proOk   = !goals.protein_goal || Math.abs(day.protein / goals.protein_goal - 1) <= s;
-    const carbsOk = !goals.carbs_goal   || Math.abs(day.carbs   / goals.carbs_goal   - 1) <= s;
-    const fatOk   = !goals.fat_goal     || Math.abs(day.fat     / goals.fat_goal     - 1) <= s;
-    if (calDev <= s && proOk && carbsOk && fatOk) return 'cal-day--green';
-    if (calDev <= c) return 'cal-day--yellow';
+    const m = calGradeThresholds.macros || _defaultMacros();
+    const calOk  = !m.calories.enabled || macroPasses(day.calories, goals.calorie_goal, m.calories.direction, s);
+    const proOk  = !m.protein.enabled  || macroPasses(day.protein,  goals.protein_goal, m.protein.direction,  s);
+    const carbOk = !m.carbs.enabled    || macroPasses(day.carbs,    goals.carbs_goal,   m.carbs.direction,    s);
+    const fatOk  = !m.fat.enabled      || macroPasses(day.fat,      goals.fat_goal,     m.fat.direction,      s);
+    const calClose = macroPasses(day.calories, goals.calorie_goal, m.calories.direction, c);
+    if (calOk && proOk && carbOk && fatOk) return 'cal-day--green';
+    if (calClose) return 'cal-day--yellow';
     return 'cal-day--red';
 }
 
@@ -1875,14 +1894,20 @@ function updateGradingLegend() {
     const gl = document.getElementById('legendGreenLabel');
     const yl = document.getElementById('legendYellowLabel');
     const rl = document.getElementById('legendRedLabel');
-    if (gl) gl.textContent = `Goals met (±${s}%)`;
-    if (yl) yl.textContent = `Close (±${s+1}–${c}%)`;
+    if (gl) gl.textContent = `Goals met`;
+    if (yl) yl.textContent = `Close (cal ±${s+1}–${c}%)`;
     if (rl) rl.textContent = `Off track (>${c}%)`;
 }
 
 function openGradingModal() {
     document.getElementById('gradeSuccessInput').value = calGradeThresholds.success;
     document.getElementById('gradeCloseInput').value   = calGradeThresholds.close;
+    const m = calGradeThresholds.macros || _defaultMacros();
+    ['calories', 'protein', 'carbs', 'fat'].forEach(key => {
+        const cfg = m[key] || { enabled: true, direction: 'within' };
+        document.getElementById(`gradeEn_${key}`).checked = cfg.enabled;
+        document.getElementById(`gradeDir_${key}`).value  = cfg.direction;
+    });
     document.getElementById('gradingModal').style.display = 'flex';
 }
 
@@ -1905,11 +1930,17 @@ function saveGradingThresholds() {
     }
     document.getElementById('gradeCloseInput').style.borderColor = '';
     document.getElementById('gradeSuccessInput').style.borderColor = '';
-    calGradeThresholds = { success: s, close: c };
+    const macros = {};
+    ['calories', 'protein', 'carbs', 'fat'].forEach(key => {
+        macros[key] = {
+            enabled:   document.getElementById(`gradeEn_${key}`).checked,
+            direction: document.getElementById(`gradeDir_${key}`).value
+        };
+    });
+    calGradeThresholds = { success: s, close: c, macros };
     localStorage.setItem('calGradeThresholds', JSON.stringify(calGradeThresholds));
     updateGradingLegend();
     closeGradingModal();
-    // Re-render calendar with new thresholds
     if (historyRangeData) renderCalendar(historyRangeData);
 }
 
@@ -1962,14 +1993,15 @@ function renderHistoryDayPanel(dateStr, data) {
     const gradeBadge = document.getElementById('historyDayGrade');
     if (gradeBadge) gradeBadge.style.display = 'none';
 
-    // Return CSS class for a total value vs its goal
-    function cellCls(val, goal) {
+    // Return CSS class for a total value vs its goal, respecting per-macro direction
+    function cellCls(val, goal, macroKey) {
         if (!goal) return '';
-        const dev = Math.abs(val / goal - 1);
         const s = calGradeThresholds.success / 100;
         const c = calGradeThresholds.close / 100;
-        if (dev <= s) return ' class="hist-val-green"';
-        if (dev <= c) return ' class="hist-val-yellow"';
+        const m = calGradeThresholds.macros || _defaultMacros();
+        const dir = (macroKey && m[macroKey]) ? m[macroKey].direction : 'within';
+        if (macroPasses(val, goal, dir, s)) return ' class="hist-val-green"';
+        if (macroPasses(val, goal, dir, c)) return ' class="hist-val-yellow"';
         return ' class="hist-val-red"';
     }
 
@@ -2000,10 +2032,10 @@ function renderHistoryDayPanel(dateStr, data) {
         html += `</tbody><tfoot>
             <tr class="history-totals-row">
                 <td>Total</td>
-                <td${cellCls(t.calories, cg)}>${Math.round(t.calories)}</td>
-                <td${cellCls(t.protein, pg)}>${Math.round(t.protein)}g</td>
-                <td${cellCls(t.carbs, carbg)}>${Math.round(t.carbs)}g</td>
-                <td${cellCls(t.fat, fatg)}>${Math.round(t.fat)}g</td>
+                <td${cellCls(t.calories, cg, 'calories')}>${Math.round(t.calories)}</td>
+                <td${cellCls(t.protein, pg, 'protein')}>${Math.round(t.protein)}g</td>
+                <td${cellCls(t.carbs, carbg, 'carbs')}>${Math.round(t.carbs)}g</td>
+                <td${cellCls(t.fat, fatg, 'fat')}>${Math.round(t.fat)}g</td>
             </tr>
             <tr class="history-goals-row">
                 <td>Goal</td>

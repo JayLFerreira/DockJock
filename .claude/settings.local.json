@@ -5,7 +5,11 @@
       "Bash(powershell.exe -Command \"echo $PROFILE\")",
       "Bash(powershell.exe -Command \"Get-Content ''C:\\\\Users\\\\ferre\\\\OneDrive\\\\Documents\\\\WindowsPowerShell\\\\Microsoft.PowerShell_profile.ps1''\")",
       "Bash(powershell.exe -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Users\\\\ferre\\\\OneDrive\\\\Documents\\\\WindowsPowerShell''\")",
-      "Bash(wc -l \"c:/Users/ferre/Documents/DockJock/dockjock-phase2-fixed \\(1\\)/macro-tracker/frontend/styles.css\")"
+      "Bash(wc -l \"c:/Users/ferre/Documents/DockJock/dockjock-phase2-fixed \\(1\\)/macro-tracker/frontend/styles.css\")",
+      "Bash(powershell.exe -Command \":*)",
+      "Bash(CLAUDE=\"C:/Users/ferre/.vscode/extensions/anthropic.claude-code-2.1.72-win32-x64/resources/native-binary/claude.exe\")",
+      "Bash(\"$CLAUDE\" plugin install \"frontend-design\")",
+      "Bash(\"$CLAUDE\" plugin list)"
     ],
     "additionalDirectories": [
       "C:\\Users\\ferre\\OneDrive\\Documents\\WindowsPowerShell"

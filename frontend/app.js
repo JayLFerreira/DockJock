@@ -68,6 +68,7 @@ function initializeApp() {
             if (page === 'settings') loadSettingsPage();
             if (page === 'micros') loadMicrosPage();
             if (page === 'history') loadHistoryPage();
+            if (page === 'cache') loadCachePage();
         });
     });
 
@@ -703,52 +704,134 @@ const MICRO_RDA = [
 
 let microsPeriod = 'today';
 let microsCurrentTotals = {};
+let microsViewDate = new Date();
+let microsSupplements = [];
+let supplementsLoaded = false;
+let supplementDailyTotals = {};
+let editingSupplementId = null;
+
+// ── Supplement helpers ────────────────────────────────────────────────────────
+
+async function fetchSupplements() {
+    try {
+        const res = await fetch(`${API_URL}/supplements`, {
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        const data = await res.json();
+        microsSupplements = data.supplements || [];
+        supplementsLoaded = true;
+        computeSupplementDailyTotals();
+    } catch {}
+}
+
+function computeSupplementDailyTotals() {
+    supplementDailyTotals = {};
+    microsSupplements.filter(s => s.active).forEach(s => {
+        Object.entries(s.micros || {}).forEach(([k, v]) => {
+            supplementDailyTotals[k] = (supplementDailyTotals[k] || 0) + (v || 0);
+        });
+    });
+}
+
+// ── Micros core ───────────────────────────────────────────────────────────────
 
 async function loadMicrosPage(period) {
-    if (period) microsPeriod = period;
-    const container = document.getElementById('microsContent');
-    const dateEl = document.getElementById('microsDate');
-    const titleEl = document.getElementById('microsTitle');
+    if (period) {
+        microsPeriod = period;
+        microsViewDate = new Date();
+    }
 
-    // Update toggle state
+    if (!supplementsLoaded) await fetchSupplements();
+
     document.getElementById('microsTodayBtn').classList.toggle('active', microsPeriod === 'today');
     document.getElementById('microsWeekBtn').classList.toggle('active', microsPeriod === 'week');
+    document.getElementById('microsMonthBtn').classList.toggle('active', microsPeriod === 'month');
 
-    // Clear analysis when switching periods
+    const navEl = document.getElementById('microsNav');
+    navEl.style.display = microsPeriod !== 'today' ? 'flex' : 'none';
+    updateMicrosNavLabel();
+
     document.getElementById('microsAnalysis').style.display = 'none';
+    await renderMicrosForPeriod();
+    updateSupplementBadge();
+}
 
-    let entries, rdaMultiplier;
+async function renderMicrosForPeriod() {
+    const container = document.getElementById('microsContent');
+    const titleEl   = document.getElementById('microsTitle');
+    const dateEl    = document.getElementById('microsDate');
 
     if (microsPeriod === 'today') {
-        entries = window.currentEntries || [];
-        rdaMultiplier = 1;
         titleEl.textContent = "Today's Micronutrients";
-        const now = new Date();
-        dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    } else {
+        dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+        const entries = window.currentEntries || [];
+        const foodTotals = aggregateMicrosFromEntries(entries);
+        const totals = addSupplementTotals(foodTotals, 1);
+        microsCurrentTotals = { ...totals };
+
+        const hasFood = entries.length > 0;
+        const hasSupps = Object.values(supplementDailyTotals).some(v => v > 0);
+        if (!hasFood && !hasSupps) {
+            container.innerHTML = '<p class="micros-empty">No food logged today. Add entries to see micronutrient data.</p>';
+        } else {
+            renderMicrosGrid(container, totals, 1);
+        }
+
+    } else if (microsPeriod === 'week') {
+        const weekStart = getWeekStart(microsViewDate);
+        const weekEnd   = new Date(weekStart.getTime() + 6 * 86400000);
         titleEl.textContent = "Weekly Micronutrients";
-        dateEl.textContent = "7-day totals vs. weekly goal (7× RDA)";
+        const opts = { month: 'short', day: 'numeric' };
+        dateEl.textContent = `${weekStart.toLocaleDateString('en-US', opts)} – ${weekEnd.toLocaleDateString('en-US', { ...opts, year: 'numeric' })} · 7-day totals vs. 7× RDA`;
+
         container.innerHTML = '<p class="micros-empty">Loading...</p>';
         try {
             const tzOffset = new Date().getTimezoneOffset();
-            const res = await fetch(`${API_URL}/food/week?tz_offset=${tzOffset}`, {
-                headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
-            });
+            const res = await fetch(
+                `${API_URL}/micros/range?start=${formatDate(weekStart)}&end=${formatDate(weekEnd)}&tz_offset=${tzOffset}`,
+                { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } }
+            );
             const data = await res.json();
-            entries = data.entries;
-            rdaMultiplier = data.days;
+            const foodTotals = {};
+            data.days.filter(d => d.has_data).forEach(d => {
+                Object.entries(d.micros || {}).forEach(([k, v]) => {
+                    foodTotals[k] = (foodTotals[k] || 0) + (v || 0);
+                });
+            });
+            const totals = addSupplementTotals(foodTotals, 7);
+            microsCurrentTotals = { ...totals };
+            if (Object.keys(totals).length === 0) {
+                container.innerHTML = '<p class="micros-empty">No food logged this week.</p>';
+            } else {
+                renderMicrosGrid(container, totals, 7);
+            }
         } catch {
             container.innerHTML = '<p class="micros-empty">Error loading weekly data.</p>';
-            return;
+        }
+
+    } else if (microsPeriod === 'month') {
+        const firstDay = new Date(microsViewDate.getFullYear(), microsViewDate.getMonth(), 1);
+        const lastDay  = new Date(microsViewDate.getFullYear(), microsViewDate.getMonth() + 1, 0);
+        titleEl.textContent = "Monthly Micronutrients";
+        dateEl.textContent = firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' · Daily averages & consistency';
+
+        container.innerHTML = '<p class="micros-empty">Loading...</p>';
+        try {
+            const tzOffset = new Date().getTimezoneOffset();
+            const res = await fetch(
+                `${API_URL}/micros/range?start=${formatDate(firstDay)}&end=${formatDate(lastDay)}&tz_offset=${tzOffset}`,
+                { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } }
+            );
+            const data = await res.json();
+            renderMicrosMonth(container, data.days);
+        } catch {
+            container.innerHTML = '<p class="micros-empty">Error loading monthly data.</p>';
         }
     }
+}
 
-    if (entries.length === 0) {
-        container.innerHTML = `<p class="micros-empty">No food logged. Add entries to see micronutrient data.</p>`;
-        return;
-    }
-
-    // Aggregate totals
+function aggregateMicrosFromEntries(entries) {
     const totals = {};
     entries.forEach(entry => {
         let micros = {};
@@ -757,9 +840,18 @@ async function loadMicrosPage(period) {
             totals[k] = (totals[k] || 0) + (v || 0);
         });
     });
-    microsCurrentTotals = { ...totals };
+    return totals;
+}
 
-    // Build HTML
+function addSupplementTotals(foodTotals, days) {
+    const totals = { ...foodTotals };
+    Object.entries(supplementDailyTotals).forEach(([k, v]) => {
+        totals[k] = (totals[k] || 0) + v * days;
+    });
+    return totals;
+}
+
+function renderMicrosGrid(container, totals, rdaMultiplier) {
     const groups = ['Vitamins', 'Minerals'];
     let html = '';
     groups.forEach(group => {
@@ -770,8 +862,8 @@ async function loadMicrosPage(period) {
             const rawPct = (amount / goal) * 100;
             const barPct = Math.min(rawPct, 100);
             const displayPct = rawPct >= 10 ? Math.round(rawPct) : rawPct.toFixed(1);
-            const displayAmt = amount < 10 ? amount.toFixed(1) : Math.round(amount);
-            const displayGoal = goal < 10 ? goal.toFixed(1) : Math.round(goal);
+            const displayAmt  = amount < 10 ? amount.toFixed(1) : Math.round(amount);
+            const displayGoal = goal   < 10 ? goal.toFixed(1)   : Math.round(goal);
             let barClass, pctColor;
             if (micro.upperLimit) {
                 barClass = barPct < 80 ? 'micros-bar-good' : barPct < 100 ? 'micros-bar-warn' : 'micros-bar-over';
@@ -795,6 +887,136 @@ async function loadMicrosPage(period) {
     container.innerHTML = html;
 }
 
+function renderMicrosMonth(container, dayData) {
+    const loggedDays = dayData.filter(d => d.has_data);
+    if (loggedDays.length === 0) {
+        container.innerHTML = '<p class="micros-empty">No food logged this month.</p>';
+        microsCurrentTotals = {};
+        return;
+    }
+
+    const stats = {};
+    MICRO_RDA.forEach(micro => {
+        let sum = 0, daysHit = 0;
+        loggedDays.forEach(d => {
+            const foodAmt = (d.micros || {})[micro.key] || 0;
+            const suppAmt = supplementDailyTotals[micro.key] || 0;
+            const total = foodAmt + suppAmt;
+            sum += total;
+            if (!micro.upperLimit && total >= micro.rda) daysHit++;
+            if (micro.upperLimit && total <= micro.rda) daysHit++;
+        });
+        stats[micro.key] = { avg: sum / loggedDays.length, daysHit, daysLogged: loggedDays.length };
+    });
+
+    microsCurrentTotals = {};
+    MICRO_RDA.forEach(m => { microsCurrentTotals[m.key] = stats[m.key].avg; });
+
+    const activeSuppsCount = microsSupplements.filter(s => s.active).length;
+    const suppNote = activeSuppsCount > 0 ? ` · ${activeSuppsCount} supplement${activeSuppsCount > 1 ? 's' : ''} included` : '';
+
+    const groups = ['Vitamins', 'Minerals'];
+    let html = `<div class="micros-month-note">${loggedDays.length} day${loggedDays.length > 1 ? 's' : ''} logged${suppNote}</div>`;
+    groups.forEach(group => {
+        html += `<div class="micros-group"><h3 class="micros-group-title">${group}</h3><div class="micros-list">`;
+        MICRO_RDA.filter(m => m.group === group).forEach(micro => {
+            const { avg, daysHit, daysLogged } = stats[micro.key];
+            const rawPct  = (avg / micro.rda) * 100;
+            const barPct  = Math.min(rawPct, 100);
+            const consPct = daysLogged ? Math.round((daysHit / daysLogged) * 100) : 0;
+            const displayPct = rawPct >= 10 ? Math.round(rawPct) : rawPct.toFixed(1);
+            const displayAvg = avg < 10 ? avg.toFixed(1) : Math.round(avg);
+            let barClass, pctColor;
+            if (micro.upperLimit) {
+                barClass = barPct < 80 ? 'micros-bar-good' : barPct < 100 ? 'micros-bar-warn' : 'micros-bar-over';
+                pctColor = barPct < 80 ? '#27ae60' : barPct < 100 ? '#e67e22' : '#e74c3c';
+            } else {
+                barClass = barPct >= 90 ? 'micros-bar-good' : barPct >= 30 ? 'micros-bar-warn' : 'micros-bar-low';
+                pctColor = barPct >= 90 ? '#27ae60' : barPct >= 30 ? '#e67e22' : '#e74c3c';
+            }
+            const consColor = consPct >= 70 ? '#27ae60' : consPct >= 40 ? '#e67e22' : '#e74c3c';
+            html += `
+                <div class="micros-row">
+                    <span class="micros-label">${micro.label}</span>
+                    <div class="micros-bar-wrap">
+                        <div class="micros-bar ${barClass}" style="width:${barPct}%"></div>
+                    </div>
+                    <span class="micros-pct" style="color:${pctColor}">${displayPct}%</span>
+                    <span class="micros-amount">${displayAvg} avg · <span style="color:${consColor}">${daysHit}/${daysLogged}d</span></span>
+                </div>`;
+        });
+        html += '</div></div>';
+    });
+    container.innerHTML = html;
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+
+function microsNavPrev() {
+    if (microsPeriod === 'week') {
+        microsViewDate = new Date(microsViewDate.getTime() - 7 * 86400000);
+    } else if (microsPeriod === 'month') {
+        microsViewDate = new Date(microsViewDate.getFullYear(), microsViewDate.getMonth() - 1, 1);
+    }
+    updateMicrosNavLabel();
+    renderMicrosForPeriod().then(() => updateSupplementBadge());
+}
+
+function microsNavNext() {
+    const now = new Date();
+    if (microsPeriod === 'week') {
+        const next = new Date(microsViewDate.getTime() + 7 * 86400000);
+        if (getWeekStart(next) <= getWeekStart(now)) microsViewDate = next;
+    } else if (microsPeriod === 'month') {
+        const next = new Date(microsViewDate.getFullYear(), microsViewDate.getMonth() + 1, 1);
+        const nowFirst = new Date(now.getFullYear(), now.getMonth(), 1);
+        if (next <= nowFirst) microsViewDate = next;
+    }
+    updateMicrosNavLabel();
+    renderMicrosForPeriod().then(() => updateSupplementBadge());
+}
+
+function updateMicrosNavLabel() {
+    const label = document.getElementById('microsNavLabel');
+    if (!label) return;
+    if (microsPeriod === 'week') {
+        const weekStart = getWeekStart(microsViewDate);
+        const weekEnd   = new Date(weekStart.getTime() + 6 * 86400000);
+        const opts = { month: 'short', day: 'numeric' };
+        label.textContent = `${weekStart.toLocaleDateString('en-US', opts)} – ${weekEnd.toLocaleDateString('en-US', opts)}`;
+    } else if (microsPeriod === 'month') {
+        label.textContent = microsViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+}
+
+function getWeekStart(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function formatDate(date) {
+    return date.toISOString().split('T')[0];
+}
+
+// ── Supplement badge ──────────────────────────────────────────────────────────
+
+function updateSupplementBadge() {
+    const badge = document.getElementById('microsSupplementBadge');
+    if (!badge) return;
+    const active = microsSupplements.filter(s => s.active);
+    if (active.length === 0) {
+        badge.style.display = 'none';
+        return;
+    }
+    badge.style.display = 'block';
+    badge.innerHTML = `&#128138; Supplements included: ${active.map(s => s.name).join(', ')}`;
+}
+
+// ── Analyze weaknesses ────────────────────────────────────────────────────────
+
 async function analyzeMicros() {
     const btn = document.getElementById('analyzeBtn');
     const analysisEl = document.getElementById('microsAnalysis');
@@ -811,33 +1033,33 @@ async function analyzeMicros() {
     analysisEl.style.display = 'block';
 
     try {
+        const daysParam = microsPeriod === 'week' ? 7 : microsPeriod === 'month' ? 30 : 1;
         const response = await fetch(`${API_URL}/micros/analyze`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': 'Basic ' + btoa(':' + authPassword)
             },
-            body: JSON.stringify({
-                period: microsPeriod,
-                days: microsPeriod === 'week' ? 7 : 1,
-                micros: microsCurrentTotals
-            })
+            body: JSON.stringify({ period: microsPeriod, days: daysParam, micros: microsCurrentTotals })
         });
 
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail);
 
-        let html = `<div class="analysis-card">
-            <div class="analysis-summary">${data.summary}</div>`;
+        let html = `<div class="analysis-card"><div class="analysis-summary">${data.summary}</div>`;
 
         if (data.deficiencies && data.deficiencies.length > 0) {
             html += `<div class="analysis-section-title">Top Deficiencies</div>`;
             data.deficiencies.forEach(d => {
+                const symptomsHtml = d.symptoms && d.symptoms.length > 0
+                    ? `<div class="analysis-symptoms">&#9888; May cause: ${d.symptoms.join(', ')}</div>`
+                    : '';
                 html += `<div class="analysis-deficiency">
                     <div class="analysis-def-header">
                         <span class="analysis-nutrient">${d.nutrient}</span>
                         <span class="analysis-pct">${d.pct_of_rda}% of RDA</span>
                     </div>
+                    ${symptomsHtml}
                     <div class="analysis-foods">Eat more: ${d.foods.join(', ')}</div>
                 </div>`;
             });
@@ -845,9 +1067,7 @@ async function analyzeMicros() {
 
         if (data.strengths && data.strengths.length > 0) {
             html += `<div class="analysis-section-title">Strengths</div>
-                <ul class="analysis-strengths">
-                    ${data.strengths.map(s => `<li>${s}</li>`).join('')}
-                </ul>`;
+                <ul class="analysis-strengths">${data.strengths.map(s => `<li>${s}</li>`).join('')}</ul>`;
         }
 
         html += '</div>';
@@ -858,6 +1078,154 @@ async function analyzeMicros() {
         btn.disabled = false;
         btn.textContent = 'Analyze Weaknesses';
     }
+}
+
+// ── Supplement management ─────────────────────────────────────────────────────
+
+function openSupplementsModal() {
+    renderSupplementList();
+    closeSuppForm();
+    document.getElementById('supplementsModal').style.display = 'flex';
+}
+
+function closeSupplementsModal() {
+    document.getElementById('supplementsModal').style.display = 'none';
+    renderMicrosForPeriod().then(() => updateSupplementBadge());
+}
+
+function closeSupplementsModalOutside(e) {
+    if (e.target === document.getElementById('supplementsModal')) closeSupplementsModal();
+}
+
+function renderSupplementList() {
+    const list = document.getElementById('suppList');
+    if (microsSupplements.length === 0) {
+        list.innerHTML = '<p style="color:#999; font-size:14px; margin-bottom:4px">No supplements added yet.</p>';
+        return;
+    }
+    list.innerHTML = microsSupplements.map(s => {
+        const microCount = Object.values(s.micros || {}).filter(v => v > 0).length;
+        return `<div class="supp-item">
+            <div class="supp-item-info">
+                <span class="supp-item-name">${s.name}</span>
+                <span class="supp-item-dose">${s.dose_label} · ${microCount} nutrient${microCount !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="supp-item-controls">
+                <button class="supp-toggle-btn ${s.active ? 'active' : ''}" onclick="toggleSupplement(${s.id})">${s.active ? 'Active' : 'Off'}</button>
+                <button class="supp-edit-btn" onclick="openSuppForm(${s.id})">Edit</button>
+                <button class="supp-delete-btn" onclick="deleteSupplement(${s.id})">&#10005;</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function openSuppForm(id) {
+    editingSupplementId = id || null;
+    document.getElementById('suppListPanel').style.display = 'none';
+    document.getElementById('suppFormPanel').style.display = 'block';
+    document.getElementById('suppSaveBtn').style.display = '';
+    document.getElementById('suppCancelBtn').style.display = '';
+    document.getElementById('suppDoneBtn').style.display = 'none';
+    document.getElementById('suppFormTitle').textContent = id ? 'Edit Supplement' : 'Add Supplement';
+
+    buildSuppMicroFields();
+
+    if (id) {
+        const supp = microsSupplements.find(s => s.id === id);
+        if (supp) {
+            document.getElementById('suppName').value = supp.name;
+            document.getElementById('suppDoseLabel').value = supp.dose_label;
+            document.getElementById('suppActive').checked = supp.active;
+            MICRO_RDA.forEach(micro => {
+                const input = document.getElementById(`supp_micro_${micro.key}`);
+                if (input) input.value = supp.micros[micro.key] > 0 ? supp.micros[micro.key] : '';
+            });
+        }
+    } else {
+        document.getElementById('suppName').value = '';
+        document.getElementById('suppDoseLabel').value = '1 tablet';
+        document.getElementById('suppActive').checked = true;
+        MICRO_RDA.forEach(micro => {
+            const input = document.getElementById(`supp_micro_${micro.key}`);
+            if (input) input.value = '';
+        });
+    }
+}
+
+function buildSuppMicroFields() {
+    const vitDiv = document.getElementById('suppVitaminFields');
+    const minDiv = document.getElementById('suppMineralFields');
+    vitDiv.innerHTML = '';
+    minDiv.innerHTML = '';
+    MICRO_RDA.forEach(micro => {
+        const div = document.createElement('div');
+        div.className = 'supp-micro-field';
+        div.innerHTML = `<label>${micro.label} <span class="supp-micro-unit">(${micro.unit})</span></label>
+            <input type="number" id="supp_micro_${micro.key}" class="supp-micro-input" step="any" min="0" placeholder="0">`;
+        (micro.group === 'Vitamins' ? vitDiv : minDiv).appendChild(div);
+    });
+}
+
+function closeSuppForm() {
+    document.getElementById('suppListPanel').style.display = 'block';
+    document.getElementById('suppFormPanel').style.display = 'none';
+    document.getElementById('suppSaveBtn').style.display = 'none';
+    document.getElementById('suppCancelBtn').style.display = 'none';
+    document.getElementById('suppDoneBtn').style.display = '';
+    editingSupplementId = null;
+}
+
+async function saveSupplement() {
+    const name = document.getElementById('suppName').value.trim();
+    if (!name) { document.getElementById('suppName').focus(); return; }
+    const doseLabel = document.getElementById('suppDoseLabel').value.trim() || '1 tablet';
+    const active = document.getElementById('suppActive').checked;
+
+    const micros = {};
+    MICRO_RDA.forEach(micro => {
+        const val = parseFloat(document.getElementById(`supp_micro_${micro.key}`)?.value);
+        if (!isNaN(val) && val > 0) micros[micro.key] = val;
+    });
+
+    try {
+        const url    = editingSupplementId ? `${API_URL}/supplements/${editingSupplementId}` : `${API_URL}/supplements`;
+        const method = editingSupplementId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify({ name, dose_label: doseLabel, micros, active })
+        });
+        if (res.ok) {
+            await fetchSupplements();
+            closeSuppForm();
+            renderSupplementList();
+        }
+    } catch {}
+}
+
+async function toggleSupplement(id) {
+    const supp = microsSupplements.find(s => s.id === id);
+    if (!supp) return;
+    try {
+        await fetch(`${API_URL}/supplements/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Basic ' + btoa(':' + authPassword) },
+            body: JSON.stringify({ name: supp.name, dose_label: supp.dose_label, micros: supp.micros, active: !supp.active })
+        });
+        await fetchSupplements();
+        renderSupplementList();
+    } catch {}
+}
+
+async function deleteSupplement(id) {
+    try {
+        await fetch(`${API_URL}/supplements/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        await fetchSupplements();
+        renderSupplementList();
+    } catch {}
 }
 
 let pendingDeleteEntryId = null;
@@ -2417,4 +2785,183 @@ function loadNotifPrefs() {
     if (ds) ds.checked = prefs.dailySummary || false;
     if (st) st.value = prefs.summaryTime || '20:00';
     updateNotifPermStatus();
+}
+
+// ── Cache Manager ─────────────────────────────────────────────────────────────
+
+let cacheData = [];
+
+async function loadCachePage() {
+    const tbody = document.getElementById('cacheTableBody');
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-secondary)">Loading…</td></tr>';
+    try {
+        const res = await fetch('/api/cache', { headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) } });
+        if (!res.ok) throw new Error('Failed to load cache');
+        cacheData = await res.json();
+        renderCacheTable(cacheData);
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:#e74c3c">Error: ${e.message}</td></tr>`;
+    }
+}
+
+function renderCacheTable(rows) {
+    const tbody = document.getElementById('cacheTableBody');
+    const count = document.getElementById('cacheCount');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-secondary)">No entries yet</td></tr>';
+        count.textContent = '';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const unitLabel = r.unit ? `<span style="color:var(--text-secondary);font-size:0.8rem">/${r.unit}</span>` : '';
+        return `<tr>
+            <td style="font-weight:500">${r.display_name}</td>
+            <td style="color:var(--text-secondary);font-size:0.85rem">${r.unit || '—'}</td>
+            <td style="text-align:right">${r.calories}</td>
+            <td style="text-align:right">${r.protein}g</td>
+            <td style="text-align:right">${r.carbs}g</td>
+            <td style="text-align:right">${r.fat}g</td>
+            <td style="text-align:right">${r.fiber}g</td>
+            <td style="text-align:right;white-space:nowrap">
+                <button class="secondary-btn" style="padding:3px 10px;font-size:0.78rem" data-key="${r.key}" onclick="openCacheEditModal(this.dataset.key)">Edit</button>
+                <button class="secondary-btn" style="padding:3px 10px;font-size:0.78rem;color:#e74c3c;border-color:#e74c3c;margin-left:4px" data-key="${r.key}" onclick="deleteCacheEntry(this.dataset.key)">Delete</button>
+            </td>
+        </tr>`;
+    }).join('');
+    count.textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`;
+}
+
+function filterCacheTable() {
+    const q = document.getElementById('cacheSearch').value.toLowerCase();
+    const filtered = q ? cacheData.filter(r => r.key.includes(q) || r.display_name.includes(q)) : cacheData;
+    renderCacheTable(filtered);
+}
+
+function openCacheEditModal(key) {
+    const entry = cacheData.find(r => r.key === key);
+    if (!entry) return;
+    document.getElementById('cacheEditKey').value = key;
+    document.getElementById('cacheEditTitle').textContent = `Edit: ${entry.display_name}${entry.unit ? ' (per ' + entry.unit + ')' : ''}`;
+    document.getElementById('ceCalories').value = entry.calories;
+    document.getElementById('ceProtein').value = entry.protein;
+    document.getElementById('ceCarbs').value = entry.carbs;
+    document.getElementById('ceFat').value = entry.fat;
+    document.getElementById('ceFiber').value = entry.fiber;
+    document.getElementById('ceSugar').value = entry.sugar;
+    document.getElementById('cacheEditStatus').textContent = '';
+    document.getElementById('cacheEditModal').style.display = 'flex';
+}
+
+function closeCacheEditModal() {
+    document.getElementById('cacheEditModal').style.display = 'none';
+}
+
+function closeCacheEditModalOutside(e) {
+    if (e.target === document.getElementById('cacheEditModal')) closeCacheEditModal();
+}
+
+async function saveCacheEdit() {
+    const key = document.getElementById('cacheEditKey').value;
+    const body = {
+        calories: parseFloat(document.getElementById('ceCalories').value) || 0,
+        protein: parseFloat(document.getElementById('ceProtein').value) || 0,
+        carbs: parseFloat(document.getElementById('ceCarbs').value) || 0,
+        fat: parseFloat(document.getElementById('ceFat').value) || 0,
+        fiber: parseFloat(document.getElementById('ceFiber').value) || 0,
+        sugar: parseFloat(document.getElementById('ceSugar').value) || 0,
+        saturated_fat: 0,
+    };
+    const status = document.getElementById('cacheEditStatus');
+    status.textContent = 'Saving…';
+    try {
+        const res = await fetch(`/api/cache?key=${encodeURIComponent(key)}`, {
+            method: 'PUT', headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Save failed');
+        status.style.color = '#81c784';
+        status.textContent = '✓ Saved';
+        closeCacheEditModal();
+        loadCachePage();
+    } catch (e) {
+        status.style.color = '#e74c3c';
+        status.textContent = e.message;
+    }
+}
+
+let _cacheDeleteKey = null;
+
+function deleteCacheEntry(key) {
+    _cacheDeleteKey = key;
+    const entry = cacheData.find(r => r.key === key);
+    document.getElementById('cacheDeleteName').textContent = entry ? entry.display_name : key;
+    document.getElementById('cacheDeleteModal').style.display = 'flex';
+}
+
+function closeCacheDeleteModal() {
+    document.getElementById('cacheDeleteModal').style.display = 'none';
+    _cacheDeleteKey = null;
+}
+
+async function confirmCacheDelete() {
+    if (!_cacheDeleteKey) return;
+    const key = _cacheDeleteKey;
+    closeCacheDeleteModal();
+    try {
+        const res = await fetch(`/api/cache?key=${encodeURIComponent(key)}`, {
+            method: 'DELETE', headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
+        loadCachePage();
+    } catch (e) {
+        console.error('Delete failed:', e.message);
+    }
+}
+
+function openAddCacheModal() {
+    ['caFoodName','caUnit'].forEach(id => document.getElementById(id).value = '');
+    ['caCalories','caProtein','caCarbs','caFat','caFiber','caSugar'].forEach(id => document.getElementById(id).value = '0');
+    document.getElementById('cacheAddStatus').textContent = '';
+    document.getElementById('cacheAddModal').style.display = 'flex';
+}
+
+function closeCacheAddModal() {
+    document.getElementById('cacheAddModal').style.display = 'none';
+}
+
+function closeCacheAddModalOutside(e) {
+    if (e.target === document.getElementById('cacheAddModal')) closeCacheAddModal();
+}
+
+async function submitAddCache() {
+    const foodName = document.getElementById('caFoodName').value.trim();
+    if (!foodName) { document.getElementById('cacheAddStatus').textContent = 'Food name is required'; return; }
+    const body = {
+        food_name: foodName,
+        unit: document.getElementById('caUnit').value.trim(),
+        calories: parseFloat(document.getElementById('caCalories').value) || 0,
+        protein: parseFloat(document.getElementById('caProtein').value) || 0,
+        carbs: parseFloat(document.getElementById('caCarbs').value) || 0,
+        fat: parseFloat(document.getElementById('caFat').value) || 0,
+        fiber: parseFloat(document.getElementById('caFiber').value) || 0,
+        sugar: parseFloat(document.getElementById('caSugar').value) || 0,
+        saturated_fat: 0,
+    };
+    const status = document.getElementById('cacheAddStatus');
+    status.style.color = 'var(--text-secondary)';
+    status.textContent = 'Saving…';
+    try {
+        const res = await fetch('/api/cache', {
+            method: 'POST', headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Add failed');
+        status.style.color = '#81c784';
+        status.textContent = '✓ Added';
+        closeCacheAddModal();
+        loadCachePage();
+    } catch (e) {
+        status.style.color = '#e74c3c';
+        status.textContent = e.message;
+    }
 }

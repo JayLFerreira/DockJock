@@ -102,6 +102,18 @@ class SavedMeal(Base):
     total_fiber = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class Supplement(Base):
+    __tablename__ = "supplements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, default=1)
+    name = Column(String, nullable=False)
+    dose_label = Column(String, default="1 tablet")
+    micros_json = Column(String, default="{}")
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

@@ -1556,6 +1556,134 @@ main {
 .micros-bar-good { background: linear-gradient(90deg, #27ae60, #2ecc71); }
 .micros-bar-over { background: linear-gradient(90deg, #c0392b, #e74c3c); }
 
+.micros-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.micros-nav-btn {
+    padding: 5px 10px;
+    background: #f4f4f6;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    color: #555;
+    transition: background 0.15s;
+}
+.micros-nav-btn:hover { background: #e8e8ec; }
+.micros-nav-label {
+    font-size: 0.82rem;
+    color: #666;
+    min-width: 110px;
+    text-align: center;
+    white-space: nowrap;
+}
+.micros-right-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.supps-btn {
+    padding: 7px 14px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #555;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.supps-btn:hover { background: #f5f5f7; }
+.micros-supplement-badge {
+    font-size: 0.82rem;
+    color: #888;
+    padding: 4px 0 2px 0;
+}
+.micros-month-note {
+    font-size: 0.82rem;
+    color: #999;
+    margin-bottom: 10px;
+}
+
+/* ── Supplement list ─────────────────────────────────────────────────────── */
+
+.supp-list { display: flex; flex-direction: column; gap: 8px; }
+
+.supp-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background: #fafafa;
+}
+.supp-item-info { display: flex; flex-direction: column; gap: 2px; }
+.supp-item-name { font-size: 0.92rem; font-weight: 600; color: #333; }
+.supp-item-dose { font-size: 0.78rem; color: #999; }
+.supp-item-controls { display: flex; align-items: center; gap: 6px; }
+
+.supp-toggle-btn {
+    padding: 4px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #f5f5f5;
+    color: #999;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.supp-toggle-btn.active {
+    background: #e8f5e9;
+    border-color: #a5d6a7;
+    color: #27ae60;
+}
+.supp-edit-btn, .supp-delete-btn {
+    padding: 4px 8px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: #666;
+    transition: background 0.15s;
+}
+.supp-delete-btn { color: #e74c3c; border-color: #fadbd8; }
+.supp-edit-btn:hover { background: #f0f0f0; }
+.supp-delete-btn:hover { background: #fef5f5; }
+
+.supp-form-micros { margin-top: 8px; }
+.supp-micros-group-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+}
+.supp-micros-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 14px;
+}
+.supp-micro-field { display: flex; flex-direction: column; gap: 2px; }
+.supp-micro-field label { font-size: 0.78rem; color: #666; }
+.supp-micro-unit { color: #bbb; font-size: 0.72rem; }
+.supp-micro-input {
+    padding: 4px 7px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    width: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    color: #333;
+}
+
 /* ── Analysis Card ────────────────────────────────────────────────────────── */
 
 .analysis-card {
@@ -1618,6 +1746,11 @@ main {
     font-weight: 600;
 }
 
+.analysis-symptoms {
+    font-size: 0.8rem;
+    color: #c0392b;
+    margin-bottom: 3px;
+}
 .analysis-foods {
     font-size: 0.82rem;
     color: #666;
@@ -2132,6 +2265,22 @@ body[data-theme="dark"] .entry-delete-btn:hover { color: #e57373; }
 body[data-theme="dark"] .micros-label        { color: #c0c8e0; }
 body[data-theme="dark"] .micros-amount       { color: #5a6278; }
 body[data-theme="dark"] .micros-bar-wrap     { background: #252a3a; }
+body[data-theme="dark"] .micros-nav-btn      { background: #252a3a; border-color: #3a4055; color: #c0c8e0; }
+body[data-theme="dark"] .micros-nav-btn:hover { background: #2d3350; }
+body[data-theme="dark"] .micros-nav-label    { color: #8a90a8; }
+body[data-theme="dark"] .supps-btn           { background: #1c2130; border-color: #3a4055; color: #c0c8e0; }
+body[data-theme="dark"] .supps-btn:hover     { background: #252a3a; }
+body[data-theme="dark"] .micros-supplement-badge { color: #6a7090; }
+body[data-theme="dark"] .micros-month-note   { color: #6a7090; }
+body[data-theme="dark"] .supp-item           { background: #1c2130; border-color: #3a4055; }
+body[data-theme="dark"] .supp-item-name      { color: #e0e8ff; }
+body[data-theme="dark"] .supp-item-dose      { color: #5a6278; }
+body[data-theme="dark"] .supp-edit-btn       { background: #1c2130; border-color: #3a4055; color: #c0c8e0; }
+body[data-theme="dark"] .supp-delete-btn     { background: #1c2130; }
+body[data-theme="dark"] .supp-micro-input    { background: #1c2130; border-color: #3a4055; color: #c0c8e0; }
+body[data-theme="dark"] .supp-micros-group-title { color: #5a6278; }
+body[data-theme="dark"] .supp-micro-field label  { color: #8a90a8; }
+body[data-theme="dark"] .analysis-symptoms   { color: #e57373; }
 
 /* Main app container & page backgrounds */
 body[data-theme="dark"] #mainApp             { background: #0f1117; }

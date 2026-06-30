@@ -8,7 +8,7 @@ from typing import Optional
 import os
 import json
 
-from database import init_db, get_db, User, FoodEntry, CachedFood, WaterEntry, SavedMeal, WeightEntry
+from database import init_db, get_db, User, FoodEntry, CachedFood, WaterEntry, SavedMeal, WeightEntry, Supplement
 from openai_service import parse_food_items
 
 app = FastAPI(title="DockJock API")
@@ -91,6 +91,26 @@ class CreateMealManualRequest(BaseModel):
 
 class AddWaterRequest(BaseModel):
     amount: float  # in ml
+
+class CacheEntryCreate(BaseModel):
+    food_name: str
+    unit: Optional[str] = ''
+    calories: float
+    protein: float
+    carbs: float
+    fat: float
+    fiber: float
+    sugar: Optional[float] = 0
+    saturated_fat: Optional[float] = 0
+
+class CacheEntryUpdate(BaseModel):
+    calories: float
+    protein: float
+    carbs: float
+    fat: float
+    fiber: float
+    sugar: Optional[float] = 0
+    saturated_fat: Optional[float] = 0
 
 # Authentication dependency
 def verify_password(credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)):
@@ -192,6 +212,89 @@ async def change_password(
     user.password_hash = bcrypt.hash(new_password)
     db.commit()
     return {"success": True, "message": "Password changed successfully"}
+
+# Cache Management Endpoints
+UNIT_SENSITIVE = {'oz', 'lb', 'g', 'ml', 'cup', 'cups', 'tbsp', 'tsp'}
+
+def _make_cache_key(food_name: str, unit: str) -> str:
+    name = food_name.lower().strip()
+    u = (unit or '').lower().strip()
+    if u in UNIT_SENSITIVE:
+        return f"{name}|{u}"
+    return name
+
+@app.get("/api/cache")
+async def list_cache(user: User = Depends(verify_password), db: Session = Depends(get_db)):
+    entries = db.query(CachedFood).order_by(CachedFood.food_name).all()
+    result = []
+    for e in entries:
+        n = json.loads(e.nutrition_json)
+        result.append({
+            "key": e.food_name,
+            "display_name": e.food_name.split("|")[0],
+            "unit": e.unit or "",
+            "calories": round(n.get("calories", 0), 1),
+            "protein": round(n.get("protein", 0), 1),
+            "carbs": round(n.get("carbs", 0), 1),
+            "fat": round(n.get("fat", 0), 1),
+            "fiber": round(n.get("fiber", 0), 1),
+            "sugar": round(n.get("sugar", 0), 1),
+            "saturated_fat": round(n.get("saturated_fat", 0), 1),
+        })
+    return result
+
+@app.post("/api/cache")
+async def add_cache_entry(
+    entry: CacheEntryCreate,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    key = _make_cache_key(entry.food_name, entry.unit or '')
+    existing = db.query(CachedFood).filter(CachedFood.food_name == key).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Entry already exists — use edit to update it")
+    nutrition = {
+        "calories": entry.calories, "protein": entry.protein, "carbs": entry.carbs,
+        "fat": entry.fat, "fiber": entry.fiber, "sugar": entry.sugar,
+        "saturated_fat": entry.saturated_fat,
+        "micros": {}
+    }
+    db.add(CachedFood(food_name=key, unit=entry.unit or '', nutrition_json=json.dumps(nutrition)))
+    db.commit()
+    return {"success": True, "key": key}
+
+@app.put("/api/cache")
+async def update_cache_entry(
+    key: str,
+    entry: CacheEntryUpdate,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    existing = db.query(CachedFood).filter(CachedFood.food_name == key).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cache entry not found")
+    nutrition = json.loads(existing.nutrition_json)
+    nutrition.update({
+        "calories": entry.calories, "protein": entry.protein, "carbs": entry.carbs,
+        "fat": entry.fat, "fiber": entry.fiber, "sugar": entry.sugar,
+        "saturated_fat": entry.saturated_fat,
+    })
+    existing.nutrition_json = json.dumps(nutrition)
+    db.commit()
+    return {"success": True}
+
+@app.delete("/api/cache")
+async def delete_cache_entry(
+    key: str,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    existing = db.query(CachedFood).filter(CachedFood.food_name == key).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Cache entry not found")
+    db.delete(existing)
+    db.commit()
+    return {"success": True}
 
 # Food Entry Endpoints
 @app.post("/api/food/add")
@@ -546,10 +649,135 @@ async def export_csv(
     )
 
 
+class SupplementCreate(BaseModel):
+    name: str
+    dose_label: str = "1 tablet"
+    micros: dict = {}
+    active: bool = True
+
 class MicroAnalysisRequest(BaseModel):
     period: str
     days: int
     micros: dict
+
+
+@app.get("/api/supplements")
+async def list_supplements(user: User = Depends(verify_password), db: Session = Depends(get_db)):
+    supplements = db.query(Supplement).filter(Supplement.user_id == user.id).all()
+    return {"supplements": [{
+        "id": s.id, "name": s.name, "dose_label": s.dose_label,
+        "micros": json.loads(s.micros_json or "{}"), "active": s.active
+    } for s in supplements]}
+
+@app.post("/api/supplements")
+async def create_supplement(
+    supp: SupplementCreate,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    s = Supplement(
+        user_id=user.id, name=supp.name, dose_label=supp.dose_label,
+        micros_json=json.dumps(supp.micros), active=supp.active
+    )
+    db.add(s)
+    db.commit()
+    return {"success": True, "id": s.id}
+
+@app.put("/api/supplements/{supp_id}")
+async def update_supplement(
+    supp_id: int,
+    supp: SupplementCreate,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    s = db.query(Supplement).filter(Supplement.id == supp_id, Supplement.user_id == user.id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Supplement not found")
+    s.name = supp.name
+    s.dose_label = supp.dose_label
+    s.micros_json = json.dumps(supp.micros)
+    s.active = supp.active
+    db.commit()
+    return {"success": True}
+
+@app.delete("/api/supplements/{supp_id}")
+async def delete_supplement(
+    supp_id: int,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db)
+):
+    s = db.query(Supplement).filter(Supplement.id == supp_id, Supplement.user_id == user.id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Supplement not found")
+    db.delete(s)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/api/micros/range")
+async def get_micros_range(
+    start: str,
+    end: str,
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0
+):
+    """Per-day micro totals for a date range. supplement_daily included separately."""
+    from datetime import datetime, timedelta
+
+    start_date = datetime.strptime(start, "%Y-%m-%d")
+    end_date   = datetime.strptime(end,   "%Y-%m-%d")
+
+    range_start_utc = start_date + timedelta(minutes=tz_offset)
+    range_end_utc   = end_date   + timedelta(days=1, minutes=tz_offset)
+
+    entries = db.query(FoodEntry).filter(
+        FoodEntry.user_id == user.id,
+        FoodEntry.date >= range_start_utc,
+        FoodEntry.date < range_end_utc
+    ).order_by(FoodEntry.date.asc()).all()
+
+    # Active supplement daily total
+    supplements = db.query(Supplement).filter(
+        Supplement.user_id == user.id,
+        Supplement.active == True
+    ).all()
+    supplement_daily = {}
+    for s in supplements:
+        try:
+            micros = json.loads(s.micros_json or "{}")
+        except Exception:
+            micros = {}
+        for k, v in micros.items():
+            supplement_daily[k] = supplement_daily.get(k, 0) + (v or 0)
+
+    # Group food micros by local date
+    days_food = {}
+    for e in entries:
+        local_dt = e.date - timedelta(minutes=tz_offset)
+        day_str  = local_dt.strftime("%Y-%m-%d")
+        if day_str not in days_food:
+            days_food[day_str] = {}
+        try:
+            micros = json.loads(e.micros_json or "{}")
+        except Exception:
+            micros = {}
+        for k, v in micros.items():
+            days_food[day_str][k] = days_food[day_str].get(k, 0) + (v or 0)
+
+    results = []
+    current = start_date
+    while current <= end_date:
+        day_str = current.strftime("%Y-%m-%d")
+        food = days_food.get(day_str, None)
+        results.append({
+            "date": day_str,
+            "has_data": food is not None,
+            "micros": food or {}
+        })
+        current += timedelta(days=1)
+
+    return {"days": results, "supplement_daily": supplement_daily}
 
 
 @app.post("/api/micros/analyze")
@@ -606,7 +834,8 @@ Return ONLY valid JSON, no markdown:
     {{
       "nutrient": "Nutrient name",
       "pct_of_rda": 14,
-      "foods": ["food 1", "food 2", "food 3"]
+      "foods": ["food 1", "food 2", "food 3"],
+      "symptoms": ["symptom 1", "symptom 2", "symptom 3"]
     }}
   ],
   "strengths": ["strength 1", "strength 2"]
@@ -614,6 +843,7 @@ Return ONLY valid JSON, no markdown:
 
 Rules:
 - List top 3-5 deficiencies (lowest % of RDA first), skip any above 80%
+- Each deficiency must include 2-3 real symptoms that can occur from chronic deficiency of that specific nutrient
 - Foods should be practical, everyday options
 - Strengths: only mention nutrients above 90% RDA
 - Be concise"""

@@ -80,19 +80,33 @@ RULES:
    - "200g salmon" → total_nutrition for 200 grams of salmon (~415 cal, 41g protein)
 8. REFERENCE TOTALS for common inputs:
    - 1 lb chicken breast (boneless skinless): ~490 cal, 92g protein, 0 carbs, 11g fat
-   - 1 lb chicken thigh (boneless skinless): ~700 cal, 85g protein, 0 carbs, 40g fat
+   - 1 lb raw chicken thigh (boneless skinless): ~540 cal, 86g protein, 0 carbs, 20g fat
+   - 1 lb cooked chicken thigh (boneless skinless): ~700 cal, 85g protein, 0 carbs, 40g fat
    - 1 lb ground beef 90/10: ~870 cal, 95g protein, 0 carbs, 50g fat
    - 1 lb ground beef 95/5 (95% lean): ~560 cal, 97g protein, 0 carbs, 16g fat
    - 1 lb ground beef 80/20: ~1150 cal, 82g protein, 0 carbs, 91g fat
    - 1 lb salmon: ~920 cal, 92g protein, 0 carbs, 59g fat
    - 1 lb raw mushrooms: ~97 cal, 13g protein, 14g carbs, 1.5g fat
    - 1 lb raw tomatoes: ~82 cal, 4g protein, 18g carbs, 0.9g fat
+   - 1 medium tomato (~123g): ~22 cal, 1g protein, 5g carbs, 0.2g fat, 1.5g fiber
+   - 1 cherry tomato (~17g): ~3 cal, 0.1g protein, 0.7g carbs, 0g fat
    - 6 oz grilled chicken breast: ~187 cal, 35g protein, 0 carbs, 4g fat
    - 2 large eggs: ~140 cal, 12g protein, 1g carbs, 10g fat
+   - 1 can Olipop lemon lime soda (12 fl oz): 35 cal, 0g protein, 13g carbs, 0g fat, 9g fiber, 2g sugar
+   - 1 apple (medium): ~95 cal, 0.5g protein, 25g carbs, 0.3g fat, 4.4g fiber
+   - 1 banana (medium): ~105 cal, 1.3g protein, 27g carbs, 0.4g fat, 3.1g fiber
+   - 1 orange (medium): ~62 cal, 1.2g protein, 15g carbs, 0.2g fat, 3.1g fiber
+   - 1 pear (medium): ~101 cal, 0.6g protein, 27g carbs, 0.2g fat, 5.5g fiber
+   - 1 peach (medium): ~59 cal, 1.4g protein, 14g carbs, 0.4g fat, 2.3g fiber
+   - 1 cup strawberries: ~49 cal, 1g protein, 12g carbs, 0.5g fat, 3g fiber
+   - Chick-fil-A 8-count Grilled Nuggets: 130 cal, 25g protein, 1g carbs, 3g fat (1 nugget ≈ 16 cal, 3.1g protein, 0.125g carbs, 0.375g fat)
+   - Chick-fil-A 30-count Grilled Nuggets: 490 cal, 93g protein, 4g carbs, 11g fat
+   - DeLallo whole wheat pasta/spaghetti (uncooked): 95 cal/oz, 3.5g protein/oz, 18.5g carbs/oz, 0.5g fat/oz, 2g fiber/oz (per label: 190 cal per 2 oz serving)
 9. Include ALL micronutrients listed in the example. If micro = 0, still include it as 0.
 10. Cooked vs raw matters — respect the description.
 11. For lean ground beef (e.g. "95% fat free" or "95/5"): fat = ~16g per lb, calories = ~560 per lb.
-12. Return ONLY JSON - no markdown, no text."""
+12. Return ONLY JSON - no markdown, no text.
+13. NEVER return an empty items array. For whole fruits/vegetables with no size specified, assume medium size and return your best estimate."""
 
 # Units where the cache key must include the unit (different units = different nutrition per-unit)
 UNIT_SENSITIVE = {'oz', 'lb', 'g', 'ml', 'cup', 'cups', 'tbsp', 'tsp'}
@@ -154,6 +168,12 @@ def parse_food_items(food_text: str, db: Session):
                     'slice', 'slices', 'piece', 'pieces', 'nugget', 'nuggets',
                     'wing', 'wings', 'strip', 'strips', 'patty', 'scoop', 'serving']
 
+    # Normalize plural/variant units to canonical form for consistent cache keys
+    unit_normalize = {
+        'cups': 'cup', 'slices': 'slice', 'pieces': 'piece',
+        'nuggets': 'nugget', 'wings': 'wing', 'strips': 'strip',
+    }
+
     for idx, line in enumerate(lines):
         words = line.lower().split()
 
@@ -174,7 +194,11 @@ def parse_food_items(food_text: str, db: Session):
         # Extract unit from next word if it's a known unit
         extracted_unit = None
         if len(words) > start_idx and words[start_idx] in common_units:
-            extracted_unit = words[start_idx]
+            extracted_unit = unit_normalize.get(words[start_idx], words[start_idx])
+            start_idx += 1
+
+        # Skip filler word "of" (e.g. "1.25 cups of rice" -> food_name = "rice")
+        if len(words) > start_idx and words[start_idx] == 'of':
             start_idx += 1
 
         if len(words) > start_idx:

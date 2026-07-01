@@ -8,8 +8,9 @@ from typing import Optional
 import os
 import json
 
-from database import init_db, get_db, User, FoodEntry, CachedFood, WaterEntry, SavedMeal, WeightEntry, Supplement
+from database import init_db, get_db, User, FoodEntry, CachedFood, WaterEntry, SavedMeal, WeightEntry, Supplement, NotionCaloriesCache
 from openai_service import parse_food_items
+from notion_service import get_calories_burned, get_cached_range
 
 app = FastAPI(title="DockJock API")
 
@@ -605,6 +606,11 @@ async def get_history_range(
         })
         current += timedelta(days=1)
 
+    # Merge cached Notion calories_burned for each day
+    notion_map = get_cached_range([r["date"] for r in results], db)
+    for r in results:
+        r["calories_burned"] = notion_map.get(r["date"])
+
     return {"days": results}
 
 
@@ -1054,6 +1060,25 @@ async def get_today_weight(
         WeightEntry.date < day_end
     ).first()
     return {"logged_today": entry is not None}
+
+
+# Notion Calories Burned
+
+@app.get("/api/notion/calories/today")
+async def get_notion_calories_today(
+    user: User = Depends(verify_password),
+    db: Session = Depends(get_db),
+    tz_offset: int = 0,
+    force: bool = False
+):
+    """Return today's calories burned from Notion (Apple Fitness), using the 4-pull cache.
+    Pass ?force=true to bypass the cache and always fetch fresh from Notion.
+    """
+    from datetime import datetime, timedelta
+    local_now = datetime.utcnow() - timedelta(minutes=tz_offset)
+    date_str = local_now.strftime("%Y-%m-%d")
+    burned = await get_calories_burned(date_str, db, force=force)
+    return {"date": date_str, "calories_burned": burned}
 
 
 # Saved Meals

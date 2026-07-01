@@ -113,6 +113,13 @@ class Supplement(Base):
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class NotionCaloriesCache(Base):
+    __tablename__ = "notion_calories_cache"
+
+    date = Column(String, primary_key=True)   # "YYYY-MM-DD"
+    calories_burned = Column(Float, nullable=True)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+
 
 def init_db():
     Base.metadata.create_all(bind=engine)

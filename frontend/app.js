@@ -428,21 +428,77 @@ async function loadTodayData() {
             const waterData = await waterResponse.json();
             updateWaterTotal(waterData.total);
         }
+
+        // Load calories burned from Notion (Apple Fitness)
+        try {
+            const notionResponse = await fetch(`${API_URL}/notion/calories/today?tz_offset=${tzOffset}`, {
+                headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+            });
+            if (notionResponse.ok) {
+                const notionData = await notionResponse.json();
+                updateEnergyBalance(notionData.calories_burned, window.currentTotals?.calories || 0);
+            }
+        } catch (notionErr) {
+            console.error('Notion fetch error:', notionErr);
+            updateEnergyBalance(null, window.currentTotals?.calories || 0);
+        }
     } catch (error) {
         console.error('Error loading today data:', error);
     }
 }
 
+function updateEnergyBalance(burned, caloriesIn) {
+    window.notionBurned = burned;
+    const ebBurned = document.getElementById('ebBurned');
+    const ebIn     = document.getElementById('ebIn');
+    const ebNet    = document.getElementById('ebNet');
+    if (!ebBurned) return;
+
+    ebIn.textContent = Math.round(caloriesIn) + ' kcal';
+
+    if (burned == null) {
+        ebBurned.textContent = '—';
+        ebNet.textContent = '—';
+        ebNet.className = 'eb-value eb-net-value';
+    } else {
+        ebBurned.textContent = Math.round(burned) + ' kcal';
+        const net  = Math.round(caloriesIn - burned);
+        const sign = net > 0 ? '+' : '';
+        ebNet.textContent = sign + net + ' kcal';
+        ebNet.className = 'eb-value eb-net-value ' + (net > 0 ? 'eb-net--surplus' : 'eb-net--deficit');
+    }
+}
+
+async function pullNotionCalories() {
+    const btn = document.getElementById('ebPullBtn');
+    if (btn) { btn.textContent = '⟳'; btn.disabled = true; }
+    try {
+        const tzOffset = new Date().getTimezoneOffset();
+        const res = await fetch(`${API_URL}/notion/calories/today?tz_offset=${tzOffset}&force=true`, {
+            headers: { 'Authorization': 'Basic ' + btoa(':' + authPassword) }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            updateEnergyBalance(data.calories_burned, window.currentTotals?.calories || 0);
+        }
+    } catch (e) {
+        console.error('Notion pull failed:', e);
+    } finally {
+        if (btn) { btn.textContent = '↻'; btn.disabled = false; }
+    }
+}
+
 function updateTotals(totals) {
     window.currentTotals = totals;
-    
+
     document.getElementById('calorieValue').textContent = Math.round(totals.calories);
     document.getElementById('proteinValue').textContent = Math.round(totals.protein);
     document.getElementById('carbsValue').textContent = Math.round(totals.carbs);
     document.getElementById('fatValue').textContent = Math.round(totals.fat);
     document.getElementById('fiberValue').textContent = Math.round(totals.fiber);
-    
+
     drawProgressRings();
+    updateEnergyBalance(window.notionBurned ?? null, totals.calories);
 }
 
 function updateWaterTotal(total) {
@@ -2219,7 +2275,7 @@ function renderCalendar(days) {
         } else if (!dayData || dayData.calories === null) {
             cell.classList.add('cal-day--empty');
         } else {
-            cell.classList.add(calDayColor(dayData, goals));
+            cell.classList.add(calDayColor(dayData));
             cell.addEventListener('click', () => selectHistoryDay(dateStr));
         }
         if (isToday)  cell.classList.add('cal-day--today');
@@ -2233,7 +2289,13 @@ function renderCalendar(days) {
         if (dayData && dayData.calories !== null && !isFuture) {
             const cal = document.createElement('span');
             cal.className = 'cal-day-cal';
-            cal.textContent = Math.round(dayData.calories);
+            if (dayData.calories_burned != null) {
+                const net = Math.round(dayData.calories - dayData.calories_burned);
+                cal.textContent = (net > 0 ? '+' : '') + net;
+                cal.classList.add(net > 0 ? 'cal-day-cal--surplus' : 'cal-day-cal--deficit');
+            } else {
+                cal.textContent = Math.round(dayData.calories);
+            }
             cell.appendChild(cal);
         }
 
@@ -2241,19 +2303,13 @@ function renderCalendar(days) {
     }
 }
 
-function calDayColor(day, goals) {
-    if (!goals.calorie_goal) return 'cal-day--yellow';
-    const s = calGradeThresholds.success / 100;
-    const c = calGradeThresholds.close   / 100;
-    const m = calGradeThresholds.macros || _defaultMacros();
-    const calOk  = !m.calories.enabled || macroPasses(day.calories, goals.calorie_goal, m.calories.direction, s);
-    const proOk  = !m.protein.enabled  || macroPasses(day.protein,  goals.protein_goal, m.protein.direction,  s);
-    const carbOk = !m.carbs.enabled    || macroPasses(day.carbs,    goals.carbs_goal,   m.carbs.direction,    s);
-    const fatOk  = !m.fat.enabled      || macroPasses(day.fat,      goals.fat_goal,     m.fat.direction,      s);
-    const calClose = macroPasses(day.calories, goals.calorie_goal, m.calories.direction, c);
-    if (calOk && proOk && carbOk && fatOk) return 'cal-day--green';
-    if (calClose) return 'cal-day--yellow';
-    return 'cal-day--red';
+function calDayColor(day) {
+    // No burn data from Notion — neutral yellow
+    if (day.calories_burned == null) return 'cal-day--yellow';
+    const net = day.calories - day.calories_burned;
+    if (net > 200)  return 'cal-day--red';    // Surplus > 200 kcal over burn
+    if (net > 0)    return 'cal-day--yellow'; // Small surplus 0-200 kcal
+    return 'cal-day--green';                  // Deficit or exactly at burn
 }
 
 function updateGradingLegend() {

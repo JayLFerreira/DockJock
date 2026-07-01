@@ -11,6 +11,7 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - DATABASE_URL=${DATABASE_URL}
+      - NOTION_TOKEN=${NOTION_TOKEN}
     restart: unless-stopped
 
   frontend:

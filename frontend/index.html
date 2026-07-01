@@ -121,6 +121,31 @@
 
                     <!-- Rings -->
                     <div class="rings-col">
+
+                    <!-- Energy Balance: Calories Burned vs In -->
+                    <div class="energy-balance-card" id="energyBalanceCard">
+                        <div class="eb-header">
+                            <span class="eb-title">Energy Balance</span>
+                            <button class="eb-pull-btn" id="ebPullBtn" onclick="pullNotionCalories()" title="Pull latest burn data from Notion">↻</button>
+                        </div>
+                        <div class="eb-table">
+                            <div class="eb-col">
+                                <span class="eb-label">Burned</span>
+                                <span class="eb-value" id="ebBurned">—</span>
+                            </div>
+                            <div class="eb-col-divider"></div>
+                            <div class="eb-col">
+                                <span class="eb-label">In</span>
+                                <span class="eb-value" id="ebIn">—</span>
+                            </div>
+                            <div class="eb-col-divider"></div>
+                            <div class="eb-col">
+                                <span class="eb-label">Net</span>
+                                <span class="eb-value eb-net-value" id="ebNet">—</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="rings-header">
                         <span></span>
                         <div class="customize-wrapper">
@@ -189,6 +214,8 @@
                             </div>
                         </div>
                     </div>
+
+
                     </div> <!-- /rings-col -->
                     </div> <!-- /home-top-row -->
 
